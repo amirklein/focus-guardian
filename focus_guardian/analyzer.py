@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from focus_guardian.familiar import parse_capture_time, read_frontmatter, stills_root
+from focus_guardian.focus import with_resolved_focus
 
 
 @dataclass
@@ -127,6 +128,7 @@ def load_recent_records(root: Path, window_minutes: int) -> list[tuple[datetime,
 
 
 def analyze(cfg: dict, root: Path | None = None) -> Report:
+    cfg = with_resolved_focus(cfg)
     window = int(cfg.get("checkWindowMinutes", 15))
     root = root or stills_root(cfg)
     now = datetime.now()

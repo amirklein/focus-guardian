@@ -15,6 +15,7 @@ from focus_guardian.clipboard_intel import proactive_cfg
 from focus_guardian.coach import coach_drift_nudge
 from focus_guardian.drift import DriftAssessment, evaluate_drift
 from focus_guardian.familiar import stills_root
+from focus_guardian.focus import with_resolved_focus
 from focus_guardian.notify import notify_drift_chime
 from focus_guardian.paths import (
     guardian_pid_path,
@@ -41,6 +42,7 @@ def _latest_familiar_mtime(root: Path) -> float:
 
 
 def evaluate_and_chime(cfg: dict) -> DriftAssessment:
+    cfg = with_resolved_focus(cfg)
     assessment = evaluate_drift(cfg)
     out = assessment.to_dict()
     out["guardian"] = True
