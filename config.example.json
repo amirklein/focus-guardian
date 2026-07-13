@@ -2,15 +2,23 @@
   "enabled": true,
   "activeProfile": "job_search",
   "interventionMode": "proactive",
-  "currentGoal": "Convert assignment hours into interview-ready deliverables — thesis + proof, not endless polish",
-  "goalKeywords": ["assignment", "interview", "hibob", "aligned", "sympera", "cursor", "slides"],
-  "assignmentKeywords": ["hibob", "bob-onboard", "sympera", "deel", "take-home", "mvp"],
+  "currentGoal": "Set focus with: fg focus \"...\" --cadence week",
+  "goalKeywords": [],
+  "assignmentKeywords": [],
   "familiarStillsPath": null,
   "lookbackHours": 6,
   "workBlockGapMinutes": 25,
   "checkWindowMinutes": 45,
   "cooldownMinutes": 45,
   "watchIntervalMinutes": 0,
+  "weekSchedule": {
+    "preset": "mon-fri",
+    "startDay": "mon",
+    "endDay": "fri"
+  },
+  "focus": {
+    "stack": []
+  },
   "proactive": {
     "pollSeconds": 90,
     "debounceSeconds": 60,
@@ -65,11 +73,12 @@
     "sentimentEnabled": true,
     "useApiForDrift": false,
     "offTopicPhrases": ["bread making", "dating apps", "vacation planning"],
-    "onTopicPhrases": ["hibob", "take-home", "assignment", "interview prep"]
+    "onTopicPhrases": []
   },
   "_comments": {
-    "interventionMode": "proactive = fg guardian start (event-driven drift). manual = opt-out. fg review = retrospective.",
-    "proactive": "Reacts to new Familiar clipboards/stills with debounce; chimes only on sustained drift.",
+    "interventionMode": "proactive = fg guardian start (event-driven drift). manual = opt-out.",
+    "focus": "fg focus sets day/week/month stack. Day overrides week overrides month.",
+    "weekSchedule": "preset: mon-fri | sun-thu | sun-sat | mon-sun. Controls when weekly focus expires.",
     "familiar": "Wispr/dictation appears in .clipboard.txt — primary intent signal for drift."
   }
 }

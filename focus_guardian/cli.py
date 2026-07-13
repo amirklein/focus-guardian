@@ -22,6 +22,13 @@ from focus_guardian.paths import (
 )
 from focus_guardian.drift_config import drift_rules
 from focus_guardian.familiar import familiar_settings_path, stills_root as get_stills
+from focus_guardian.focus import (
+    WEEK_PRESETS,
+    add_focus_entry,
+    clear_focus_cadence,
+    format_focus_status,
+    resolve_active_focus,
+)
 from focus_guardian.profiles import apply_profile, list_profiles
 from focus_guardian.review import review_session
 
@@ -60,8 +67,6 @@ def cmd_review(args: argparse.Namespace) -> int:
     else:
         print(json.dumps(out, indent=2))
     return 0
-
-
 def cmd_check(args: argparse.Namespace) -> int:
     """Short snapshot (legacy). Prefer `fg review`."""
     cfg = load_config()
@@ -121,38 +126,75 @@ def _goal_words_from_text(text: str) -> list[str]:
 
 
 def cmd_goal(args: argparse.Namespace) -> int:
+    """Legacy alias for `fg focus`."""
+    if args.hours is not None and not args.words:
+        cfg = load_config()
+        cfg["lookbackHours"] = args.hours
+        save_config(cfg)
+        print(f"Review window: {args.hours}h")
+        return 0
+    focus_args = argparse.Namespace(
+        words=args.words,
+        cadence=None,
+        priorities=args.keywords if args.keywords else None,
+        avoid=None,
+        week=None,
+        clear=None,
+    )
+    if args.words and args.auto_keywords and not args.keywords:
+        focus_args.priorities = None
+    return cmd_focus(focus_args)
+
+
+def cmd_focus(args: argparse.Namespace) -> int:
     cfg = load_config()
-    if not args.words:
-        print("Your focus right now")
-        print("─" * 40)
-        print(f"Goal:    {cfg.get('currentGoal', '(not set)')}")
-        print(f"Keywords: {', '.join(cfg.get('goalKeywords', []))}")
-        print(f"Review window: {cfg.get('lookbackHours', 6)} hours")
-        print()
-        print("To set today's focus, paste ONE line in Terminal:")
-        print('  ~/focus-guardian/.venv/bin/fg goal "HiBob slide and working demo"')
-        print()
-        print("Optional — extra words that count as on-topic (comma-separated):")
-        print('  ~/focus-guardian/.venv/bin/fg goal "HiBob demo" -k hibob,cursor,slides')
-        print()
-        print("Optional — how far back reviews look:")
-        print("  ~/focus-guardian/.venv/bin/fg goal --hours 4")
+
+    if getattr(args, "week", None):
+        ws = dict(cfg.get("weekSchedule") or {})
+        preset = args.week.lower()
+        if preset not in WEEK_PRESETS:
+            print(f"Unknown week preset: {preset}. Choose: {', '.join(WEEK_PRESETS)}")
+            return 1
+        ws["preset"] = preset
+        cfg["weekSchedule"] = ws
+        save_config(cfg)
+        print(f"Week schedule set to {preset}.")
         return 0
 
-    cfg["currentGoal"] = " ".join(args.words)
-    if args.hours is not None:
-        cfg["lookbackHours"] = args.hours
-    if args.keywords:
-        cfg["goalKeywords"] = [k.strip() for k in args.keywords.split(",") if k.strip()]
-    elif args.auto_keywords:
-        extra = _goal_words_from_text(cfg["currentGoal"])
-        base = [k.lower() for k in cfg.get("goalKeywords", [])]
-        cfg["goalKeywords"] = list(dict.fromkeys(base + extra))
+    if getattr(args, "clear", None):
+        cfg = clear_focus_cadence(cfg, args.clear)
+        save_config(cfg)
+        print(f"Cleared {args.clear} focus.")
+        print(format_focus_status(cfg))
+        return 0
+
+    if not args.words:
+        print(format_focus_status(cfg))
+        print()
+        print("Set focus (natural language):")
+        print('  fg focus "This week explore pricing, competitor analysis, and GTM" --cadence week')
+        print('  fg focus "Today: finish competitor spreadsheet" --cadence day')
+        print('  fg focus --week sun-thu')
+        return 0
+
+    text = " ".join(args.words)
+    priorities = None
+    if getattr(args, "priorities", None):
+        priorities = [p.strip() for p in args.priorities.split(",") if p.strip()]
+    avoid = None
+    if getattr(args, "avoid", None):
+        avoid = [a.strip() for a in args.avoid.split(",") if a.strip()]
+
+    cfg = add_focus_entry(
+        cfg,
+        text,
+        cadence=getattr(args, "cadence", None),
+        priorities=priorities,
+        avoid=avoid,
+    )
     save_config(cfg)
-    print("Updated.")
-    print(f"Goal: {cfg.get('currentGoal')}")
-    print(f"Keywords: {', '.join(cfg.get('goalKeywords', []))}")
-    print(f"Review window: {cfg.get('lookbackHours', 6)}h")
+    print("Focus updated.")
+    print(format_focus_status(cfg))
     return 0
 
 
@@ -262,7 +304,8 @@ def cmd_status(_: argparse.Namespace) -> int:
             f"drift≥{p.get('driftSustainedMinutes', 10)}m, "
             f"chime cooldown={p.get('chimeCooldownMinutes', 25)}m"
         )
-    print(f"Goal: {cfg.get('currentGoal')}")
+    resolved = resolve_active_focus(cfg)
+    print(f"Focus ({resolved.cadence_label}): {resolved.text}")
     print(f"Lookback: {cfg.get('lookbackHours', 6)}h work-block review")
     try:
         print(f"Familiar stills: {get_stills(cfg)}")
@@ -384,6 +427,44 @@ def main() -> int:
         help="Pull keywords from your goal text (default: on)",
     )
     p_goal.set_defaults(func=cmd_goal)
+
+    p_focus = sub.add_parser(
+        "focus",
+        help="Dynamic focus stack — day / week / month",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            'Examples:\n'
+            '  fg focus "This week explore pricing, competitors, and GTM" --cadence week\n'
+            '  fg focus "Today: competitor spreadsheet" --cadence day\n'
+            '  fg focus --week sun-thu\n'
+            '  fg focus --clear day'
+        ),
+    )
+    p_focus.add_argument("words", nargs="*", help="Focus in plain English")
+    p_focus.add_argument(
+        "--cadence",
+        choices=["day", "week", "month"],
+        help="How long this focus applies (default: inferred from text)",
+    )
+    p_focus.add_argument(
+        "--priorities",
+        help="Comma-separated priorities (overrides parsing from text)",
+    )
+    p_focus.add_argument(
+        "--avoid",
+        help="Comma-separated drift triggers, e.g. linkedin,new tooling",
+    )
+    p_focus.add_argument(
+        "--week",
+        metavar="PRESET",
+        help=f"Week boundary preset: {', '.join(WEEK_PRESETS)}",
+    )
+    p_focus.add_argument(
+        "--clear",
+        choices=["day", "week", "month"],
+        help="Remove focus for a cadence",
+    )
+    p_focus.set_defaults(func=cmd_focus)
 
     sub.add_parser("paths", help="Show Familiar data folder + Guardian config paths").set_defaults(
         func=cmd_paths

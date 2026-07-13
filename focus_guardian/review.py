@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 
 from focus_guardian.analyzer import Finding, goal_match_ratio
+from focus_guardian.focus import with_resolved_focus
 from focus_guardian.timeline import WorkBlock, recent_work_blocks, timeline_since
 
 
@@ -59,6 +60,7 @@ def _narrative_from_blocks(blocks: list[WorkBlock], goal: str) -> str:
 
 def review_session(cfg: dict) -> SessionReview:
     """Analyze recent work blocks + optional snapshot rules on the latest block."""
+    cfg = with_resolved_focus(cfg)
     hours = float(cfg.get("lookbackHours", 6))
     blocks = recent_work_blocks(cfg, hours)
     goal = cfg.get("currentGoal", "")
