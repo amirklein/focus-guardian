@@ -19,6 +19,25 @@
   "focus": {
     "stack": []
   },
+  "notifications": {
+    "channel": "slack",
+    "slack": {
+      "userId": null
+    }
+  },
+  "reviewSchedule": {
+    "daily": {
+      "enabled": true,
+      "time": "18:00",
+      "lookbackHours": 8
+    },
+    "weekly": {
+      "enabled": true,
+      "day": "end",
+      "time": "17:00",
+      "lookbackHours": 40
+    }
+  },
   "proactive": {
     "pollSeconds": 90,
     "debounceSeconds": 60,
@@ -79,6 +98,7 @@
     "interventionMode": "proactive = fg guardian start (event-driven drift). manual = opt-out.",
     "focus": "fg focus sets day/week/month stack. Day overrides week overrides month.",
     "weekSchedule": "preset: mon-fri | sun-thu | sun-sat | mon-sun. Controls when weekly focus expires.",
-    "familiar": "Wispr/dictation appears in .clipboard.txt — primary intent signal for drift."
+    "notifications": "Slack only. Set SLACK_BOT_TOKEN + SLACK_USER_ID env vars.",
+    "reviewSchedule": "Guardian sends daily/weekly Slack summaries. weekly.day=end uses weekSchedule endDay."
   }
 }

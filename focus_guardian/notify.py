@@ -1,40 +1,18 @@
-"""Desktop notifications (macOS first)."""
+"""Slack-only notifications (drift chime + review)."""
 
 from __future__ import annotations
 
-import platform
-import shutil
-import subprocess
 from datetime import datetime
 
 from focus_guardian.analyzer import Report
+from focus_guardian.focus import resolve_active_focus, with_resolved_focus
 from focus_guardian.paths import last_notify_path, log_path
-
-
-def _escape_apple(s: str) -> str:
-    return s.replace("\\", "\\\\").replace('"', '\\"')
-
-
-def notify_macos(title: str, subtitle: str, body: str) -> bool:
-    if platform.system() != "Darwin":
-        return False
-    script = (
-        f'display notification "{_escape_apple(body)}" '
-        f'with title "{_escape_apple(title)}" '
-        f'subtitle "{_escape_apple(subtitle)}"'
-    )
-    try:
-        subprocess.run(["osascript", "-e", script], check=True, capture_output=True)
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return False
-
-
-def notify_linux(body: str, title: str = "Focus Guardian") -> bool:
-    if shutil.which("notify-send"):
-        subprocess.run(["notify-send", title, body], check=False)
-        return True
-    return False
+from focus_guardian.slack_client import (
+    SlackError,
+    format_drift_message,
+    format_review_message,
+    post_message,
+)
 
 
 def should_skip_cooldown(cooldown_minutes: int) -> bool:
@@ -52,7 +30,7 @@ def should_skip_cooldown(cooldown_minutes: int) -> bool:
 def mark_notified() -> None:
     last_notify_path().write_text(str(int(datetime.now().timestamp())), encoding="utf-8")
     with log_path().open("a", encoding="utf-8") as f:
-        f.write(f"{datetime.now().isoformat(timespec='seconds')} notified\n")
+        f.write(f"{datetime.now().isoformat(timespec='seconds')} slack notified\n")
 
 
 def _chime_cooldown_minutes(cfg: dict) -> int:
@@ -60,43 +38,105 @@ def _chime_cooldown_minutes(cfg: dict) -> int:
     return int(p.get("chimeCooldownMinutes", p.get("cooldownMinutes", 25)))
 
 
+def _notifications_enabled(cfg: dict) -> bool:
+    n = cfg.get("notifications") or {}
+    return n.get("channel", "slack") == "slack"
+
+
+def _log_slack_error(err: SlackError) -> None:
+    with log_path().open("a", encoding="utf-8") as f:
+        f.write(f"SLACK ERROR {datetime.now().isoformat(timespec='seconds')} {err}\n")
+
+
 def notify_drift_chime(assessment, nudge: str, cfg: dict) -> bool:
-    """macOS notification when proactive drift is sustained."""
     from focus_guardian.drift import DriftAssessment
 
     if not isinstance(assessment, DriftAssessment):
         return False
     if not assessment.should_chime:
         return False
+    if not _notifications_enabled(cfg):
+        return False
     if should_skip_cooldown(_chime_cooldown_minutes(cfg)):
         return False
 
-    title = "Focus Guardian"
-    subtitle = assessment.wispr_excerpt[:120] if assessment.wispr_excerpt else (
-        cfg.get("currentGoal", "")[:120]
+    cfg = with_resolved_focus(cfg)
+    focus = resolve_active_focus(cfg)
+    text = format_drift_message(
+        cadence_label=focus.cadence_label,
+        focus_text=focus.text,
+        wispr_excerpt=assessment.wispr_excerpt,
+        reason=assessment.reason,
+        nudge=nudge,
+        expires_at=focus.expires_at,
     )
-    body = f"{assessment.reason} {nudge}"[:250]
-
-    sent = notify_macos(title, subtitle, body) or notify_linux(body, title)
-    if sent:
+    try:
+        post_message(text, cfg)
         mark_notified()
-    return sent
+        return True
+    except SlackError as e:
+        _log_slack_error(e)
+        return False
 
 
 def maybe_notify(report: Report, cfg: dict) -> bool:
     if not report.should_notify:
         return False
+    if not _notifications_enabled(cfg):
+        return False
     cooldown = int(cfg.get("cooldownMinutes", 20))
     if should_skip_cooldown(cooldown):
         return False
 
-    title = "Focus Guardian"
-    subtitle = (report.goal or "")[:120]
-    body = report.summary
+    cfg = with_resolved_focus(cfg)
+    focus = resolve_active_focus(cfg)
+    summary = report.summary
     if report.findings:
-        body = f"{body} — {report.findings[0].evidence}"[:250]
+        summary = f"{summary} — {report.findings[0].evidence}"
 
-    sent = notify_macos(title, subtitle, body[:200]) or notify_linux(body, title)
-    if sent:
+    text = format_drift_message(
+        cadence_label=focus.cadence_label,
+        focus_text=focus.text or report.goal,
+        wispr_excerpt="",
+        reason=summary[:300],
+        nudge="Run `fg review --human` for a full recap.",
+        expires_at=focus.expires_at,
+    )
+    try:
+        post_message(text, cfg)
         mark_notified()
-    return sent
+        return True
+    except SlackError as e:
+        _log_slack_error(e)
+        return False
+
+
+def notify_review(
+    cfg: dict,
+    *,
+    title: str,
+    narrative: str,
+    summary: str,
+    respect_cooldown: bool = False,
+) -> bool:
+    if not _notifications_enabled(cfg):
+        return False
+    if respect_cooldown and should_skip_cooldown(int(cfg.get("cooldownMinutes", 20))):
+        return False
+
+    cfg = with_resolved_focus(cfg)
+    focus = resolve_active_focus(cfg)
+    text = format_review_message(
+        title=title,
+        cadence_label=focus.cadence_label,
+        focus_text=focus.text,
+        narrative=narrative,
+        summary=summary,
+    )
+    try:
+        post_message(text, cfg)
+        mark_notified()
+        return True
+    except SlackError as e:
+        _log_slack_error(e)
+        return False

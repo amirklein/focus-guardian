@@ -12,7 +12,7 @@ from focus_guardian.coach import coach_offline, coach_with_api, format_prompt
 from focus_guardian.drift import evaluate_drift
 from focus_guardian.guardian import evaluate_and_chime, start_guardian, stop_guardian
 from focus_guardian.monitor import run_once, start_monitor, stop_monitor
-from focus_guardian.notify import maybe_notify
+from focus_guardian.notify import maybe_notify, notify_review
 from focus_guardian.paths import (
     config_path,
     ensure_config,
@@ -58,15 +58,22 @@ def cmd_review(args: argparse.Namespace) -> int:
     out = review.to_dict()
     last_report_path().write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
 
-    if args.notify and review.should_notify:
-        report, _ = _report_from_saved(out)
-        maybe_notify(report, cfg)
+    if args.notify:
+        title = "session review" if args.human else "review alert"
+        notify_review(
+            cfg,
+            title=title,
+            narrative=review.narrative if args.human else "",
+            summary=review.summary,
+        )
 
     if args.human or args.synthesize:
         print(review.narrative)
     else:
         print(json.dumps(out, indent=2))
     return 0
+
+
 def cmd_check(args: argparse.Namespace) -> int:
     """Short snapshot (legacy). Prefer `fg review`."""
     cfg = load_config()
