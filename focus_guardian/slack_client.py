@@ -4,9 +4,20 @@ from __future__ import annotations
 
 import json
 import os
+import ssl
 import urllib.error
 import urllib.request
 from typing import Any
+
+
+def _ssl_context() -> ssl.SSLContext:
+    """Use certifi CA bundle (fixes Homebrew Python SSL on macOS)."""
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
 
 
 class SlackError(RuntimeError):
@@ -59,7 +70,7 @@ def _api(method: str, payload: dict, token: str) -> dict:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=30, context=_ssl_context()) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         raise SlackError(f"Slack HTTP {e.code}: {e.read().decode('utf-8', errors='replace')}") from e

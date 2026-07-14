@@ -11,6 +11,7 @@ from focus_guardian.analyzer import Finding, Report, analyze
 from focus_guardian.coach import coach_offline, coach_with_api, format_prompt
 from focus_guardian.drift import evaluate_drift
 from focus_guardian.guardian import evaluate_and_chime, start_guardian, stop_guardian
+from focus_guardian.slack_setup import print_slack_check
 from focus_guardian.slack_bot import start_slack_bot, stop_slack_bot
 from focus_guardian.monitor import run_once, start_monitor, stop_monitor
 from focus_guardian.notify import maybe_notify, notify_review
@@ -326,13 +327,18 @@ def cmd_status(_: argparse.Namespace) -> int:
 
 
 def cmd_slack(args: argparse.Namespace) -> int:
+    if args.action == "check":
+        return print_slack_check(interactive=True)
     if args.action == "start":
+        if print_slack_check(interactive=True) != 0:
+            print("\nFix the issues above, then run: fg slack start -f", file=sys.stderr)
+            return 1
         start_slack_bot(args.foreground)
         return 0
     if args.action == "stop":
         stop_slack_bot()
         return 0
-    print("Usage: fg slack start | stop")
+    print("Usage: fg slack check | start | stop")
     return 1
 
 
@@ -507,8 +513,10 @@ def main() -> int:
     )
     p_slack.add_argument(
         "action",
-        choices=["start", "stop"],
-        help="Start or stop the Slack bot daemon",
+        choices=["check", "start", "stop"],
+        nargs="?",
+        default="check",
+        help="check setup, start, or stop the Slack bot daemon",
     )
     p_slack.add_argument("-f", "--foreground", action="store_true")
     p_slack.set_defaults(func=cmd_slack)

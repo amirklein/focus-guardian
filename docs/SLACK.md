@@ -9,6 +9,53 @@ Focus Guardian uses Slack in two ways:
 
 Both daemons can run at the same time. The bot is your primary interface; the guardian watches Familiar and pushes alerts when you drift.
 
+## 0. Local install (do this first)
+
+macOS ships Python 3.9 and no `python` command — use a venv with **Python 3.10+**:
+
+```bash
+cd ~/Projects/focus-guardian
+brew install python@3.12   # once, if needed
+/opt/homebrew/bin/python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+pip install -e .
+```
+
+Always use the venv (not bare `python3` from Homebrew outside the venv):
+
+```bash
+source ~/Projects/focus-guardian/.venv/bin/activate
+fg --version
+```
+
+**Outbound ping test** (needs `SLACK_BOT_TOKEN` + `SLACK_USER_ID` in `~/.zshrc`):
+
+```bash
+source ~/.zshrc
+.venv/bin/python3 -c "
+from focus_guardian.paths import load_config
+from focus_guardian.slack_client import post_message
+post_message('Focus Guardian test ping', load_config())
+print('Sent')
+"
+```
+
+**Verify full Slack setup:**
+
+```bash
+fg slack check
+```
+
+**Start everything:**
+
+```bash
+./scripts/start-all.sh
+# or manually:
+fg slack start -f    # debug interactive bot first
+fg guardian start
+```
+
 ## 1. Create a Slack app
 
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From scratch**.
@@ -136,4 +183,12 @@ export FOCUS_GUARDIAN_MODEL="claude-sonnet-4-20250514"  # optional override
 
 ## 7. Auto-start (macOS)
 
-After `./scripts/install-launchd.sh`, add a second LaunchAgent for the Slack bot or run `fg slack start` from your shell profile. Both daemons are independent processes.
+Install both LaunchAgents (guardian + slack):
+
+```bash
+./scripts/install-launchd.sh
+```
+
+LaunchAgents need `SLACK_*` variables at login — add exports to `~/.zshrc` or set via `launchctl setenv SLACK_BOT_TOKEN xoxb-...` etc.
+
+Logs: `~/.focus-guardian/state/launchd.log` and `slack-launchd.log`.
