@@ -48,6 +48,11 @@ def evaluate_and_chime(cfg: dict) -> DriftAssessment:
     if assessment.should_chime:
         nudge = coach_drift_nudge(assessment, cfg)
         notify_drift_chime(assessment, nudge, cfg)
+        if cfg.get("notifications", {}).get("channel") == "slack":
+            from focus_guardian.slack_bot import send_dm
+
+            text = f"⚠️ {assessment.reason}\n{nudge}"
+            send_dm(text, cfg)
     return assessment
 
 

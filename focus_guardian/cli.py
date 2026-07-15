@@ -98,7 +98,7 @@ def cmd_coach(args: argparse.Namespace) -> int:
 
     if args.api:
         try:
-            text = coach_with_api(report)
+            text = coach_with_api(report, cfg=cfg)
         except RuntimeError as e:
             print(str(e), file=sys.stderr)
             print("\n--- offline coach ---\n", file=sys.stderr)
@@ -274,6 +274,22 @@ def cmd_status(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_slack(args: argparse.Namespace) -> int:
+    from focus_guardian.slack_bot import start_bot, stop_bot, slack_bot_pid_path
+
+    if args.action == "start":
+        start_bot(foreground=args.foreground)
+    elif args.action == "stop":
+        stop_bot()
+    elif args.action == "status":
+        p = slack_bot_pid_path()
+        if p.exists():
+            print(f"Slack bot running (pid {p.read_text().strip()}).")
+        else:
+            print("Slack bot not running.")
+    return 0
+
+
 def cmd_guardian(args: argparse.Namespace) -> int:
     if args.action == "start":
         start_guardian(args.foreground)
@@ -419,6 +435,14 @@ def main() -> int:
     p_mon.add_argument("-i", "--interval", type=int, default=None, help="Minutes (>=30 recommended)")
     p_mon.add_argument("-f", "--foreground", action="store_true")
     p_mon.set_defaults(func=cmd_monitor)
+
+    p_slack = sub.add_parser(
+        "slack",
+        help="Two-way Slack bot: goal-setting, status, coaching, and proactive drift DMs",
+    )
+    p_slack.add_argument("action", choices=["start", "stop", "status"], default="status", nargs="?")
+    p_slack.add_argument("-f", "--foreground", action="store_true")
+    p_slack.set_defaults(func=cmd_slack)
 
     args = parser.parse_args()
     return args.func(args)

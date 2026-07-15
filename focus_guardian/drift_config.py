@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import json
-import os
-import urllib.error
-import urllib.request
 
+from focus_guardian import llm
 from focus_guardian.clipboard_intel import topic_score
 
 
@@ -61,12 +59,9 @@ def enrich_drift_with_api(
 ) -> dict | None:
     """Optional LLM pass: sentiment + whether drift is real vs false positive."""
     rules = drift_rules(cfg)
-    if not rules.get("useApiForDrift") or not os.environ.get("ANTHROPIC_API_KEY"):
+    if not rules.get("useApiForDrift") or llm.active_provider(cfg) is None:
         return None
 
-    model = cfg.get("synthesis", {}).get("model") or os.environ.get(
-        "FOCUS_GUARDIAN_MODEL", "claude-sonnet-4-20250514"
-    )
     payload = {
         "goal": goal,
         "wispr_excerpt": wispr_excerpt,
@@ -81,31 +76,7 @@ Return ONLY valid JSON:
  "summary": "one sentence human explanation",
  "nudge": "one sentence next action"}
 Be conservative: should_chime true only if clearly off-goal or stuck, not normal thinking aloud."""
-    body = {
-        "model": model,
-        "max_tokens": 300,
-        "system": system,
-        "messages": [{"role": "user", "content": json.dumps(payload)}],
-    }
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=json.dumps(body).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "x-api-key": os.environ["ANTHROPIC_API_KEY"],
-            "anthropic-version": "2023-06-01",
-        },
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(req, timeout=45) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        text = "".join(
-            b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"
-        )
-        text = text.strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[-1].rsplit("```", 1)[0]
-        return json.loads(text)
-    except (urllib.error.HTTPError, json.JSONDecodeError, KeyError):
+        return llm.chat_json(system, json.dumps(payload), max_tokens=300, cfg=cfg)
+    except (llm.LLMError, json.JSONDecodeError):
         return None

@@ -71,5 +71,9 @@ def guardian_pid_path() -> Path:
     return state_dir() / "guardian.pid"
 
 
+def slack_bot_pid_path() -> Path:
+    return state_dir() / "slack_bot.pid"
+
+
 def log_path() -> Path:
     return state_dir() / "check.log"

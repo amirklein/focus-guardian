@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import json
-import os
-import urllib.error
-import urllib.request
 
+from focus_guardian import llm
 from focus_guardian.analyzer import Report
 
 SYSTEM = """You are Focus Guardian, a direct productivity coach.
@@ -34,38 +32,16 @@ def format_prompt(report: Report, narrative: str | None = None) -> str:
     return "\n".join(parts)
 
 
-def coach_with_api(report: Report, model: str | None = None) -> str:
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise RuntimeError("Set ANTHROPIC_API_KEY for API coaching, or use: fg coach --print")
-
-    model = model or os.environ.get("FOCUS_GUARDIAN_MODEL", "claude-sonnet-4-20250514")
-    body = {
-        "model": model,
-        "max_tokens": 400,
-        "system": SYSTEM,
-        "messages": [{"role": "user", "content": format_prompt(report)}],
-    }
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=json.dumps(body).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-        },
-        method="POST",
-    )
+def coach_with_api(report: Report, model: str | None = None, cfg: dict | None = None) -> str:
+    if llm.active_provider(cfg) is None:
+        raise RuntimeError(
+            "Set GEMINI_API_KEY or ANTHROPIC_API_KEY for API coaching, or use: fg coach --print"
+        )
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        err = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Anthropic API error: {err}") from e
-
-    blocks = data.get("content") or []
-    texts = [b.get("text", "") for b in blocks if b.get("type") == "text"]
-    return "\n".join(texts).strip() or "(empty response)"
+        text = llm.chat(SYSTEM, format_prompt(report), max_tokens=400, cfg=cfg, model=model)
+    except llm.LLMError as e:
+        raise RuntimeError(str(e)) from e
+    return text or "(empty response)"
 
 
 def coach_drift_nudge(assessment, cfg: dict) -> str:

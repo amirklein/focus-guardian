@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
 import re
-import urllib.error
-import urllib.request
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 
+from focus_guardian import llm
 from focus_guardian.analyzer import Finding
 from focus_guardian.clipboard_intel import recent_transcriptions
 from focus_guardian.timeline import WorkBlock
@@ -191,13 +189,9 @@ def synthesize_review_offline(dossier: ReviewDossier, cfg: dict) -> str:
 
 
 def synthesize_review_api(dossier: ReviewDossier, cfg: dict) -> str:
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise RuntimeError("Set ANTHROPIC_API_KEY for AI synthesis, or use offline mode.")
+    if llm.active_provider(cfg) is None:
+        raise RuntimeError("Set GEMINI_API_KEY or ANTHROPIC_API_KEY for AI synthesis, or use offline mode.")
 
-    model = synthesis_cfg(cfg).get("model") or os.environ.get(
-        "FOCUS_GUARDIAN_MODEL", "claude-sonnet-4-20250514"
-    )
     style = synthesis_cfg(cfg).get("style", "coaching")
     payload = {
         "goal": dossier.goal,
@@ -223,34 +217,15 @@ Structure with markdown headings:
 4. What their dictation revealed (intent, emotion, avoidance if any)
 5. One move for the next 90 minutes (single concrete action)
 Under 400 words. No bullet lists longer than 4 items."""
-    body = {
-        "model": model,
-        "max_tokens": 900,
-        "system": system,
-        "messages": [{"role": "user", "content": json.dumps(payload, indent=2)}],
-    }
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=json.dumps(body).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-        },
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(req, timeout=90) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(e.read().decode("utf-8", errors="replace")) from e
-    texts = [b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"]
-    return "\n".join(texts).strip()
+        return llm.chat(system, json.dumps(payload, indent=2), max_tokens=900, cfg=cfg)
+    except llm.LLMError as e:
+        raise RuntimeError(str(e)) from e
 
 
 def synthesize_review(dossier: ReviewDossier, cfg: dict) -> str:
     sc = synthesis_cfg(cfg)
-    if sc.get("useApiForReview") and os.environ.get("ANTHROPIC_API_KEY"):
+    if sc.get("useApiForReview") and llm.active_provider(cfg):
         try:
             return synthesize_review_api(dossier, cfg)
         except RuntimeError:
