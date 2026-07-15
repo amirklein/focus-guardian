@@ -1,8 +1,8 @@
-# Focus Guardian
+# Anchor
 
-Portable productivity companion: **Familiar** watches what you do on screen and clipboard (including Wispr dictation); **Focus Guardian** detects sustained drift and chimes in proactively.
+Portable productivity companion: **Familiar** watches what you do on screen and clipboard (including Wispr dictation); **Focus Guardian** detects sustained drift and nudges you via **Slack**.
 
-Works on any machine where Familiar is installed. Not tied to Cursor, Claude Code, or a specific IDE — use the CLI from Terminal, wire it into Claude Code, or paste `fg coach --print-prompt` into any AI tool.
+Works on any machine where Familiar is installed. Not tied to Cursor, Claude Code, or a specific IDE — use the CLI from Terminal, talk to the Slack bot in DM, or paste `fg coach --print-prompt` into any AI tool.
 
 ## Architecture
 
@@ -14,21 +14,27 @@ Works on any machine where Familiar is installed. Not tied to Cursor, Claude Cod
                                                        │
                     ┌──────────────────────────────────┼──────────────────┐
                     ▼                                  ▼                  ▼
-             macOS notification                  drift engine         fg review
-             (sustained drift only)              (30m window)         (retrospective)
+             Slack DM (drift + review)          drift engine         fg review
+             + interactive bot                  (30m window)         (retrospective)
 ```
 
 | Layer | Role |
 |-------|------|
 | **Familiar** | Continuous screen + clipboard on each computer |
-| **Guardian** | Event-driven: new Familiar files → debounce → drift check → chime |
+| **Guardian** | Event-driven: new Familiar files → debounce → drift check → Slack DM |
+| **Slack bot** | Interactive DM — set focus, review, snooze (`fg slack start`) |
 | **Review** | Deep retrospective over hours (`fg review`) |
+
+**Primary interface:** Slack DM with the Focus Guardian app. Proactive alerts and on-demand commands both go through Slack.
+
+See [docs/SLACK.md](docs/SLACK.md) for app setup (Socket Mode, scopes, tokens).
 
 ## Philosophy
 
-- **Proactive by default** — `fg guardian start` watches Familiar; you do not run commands to get help.
+- **Proactive by default** — `fg guardian start` watches Familiar; drift alerts arrive in Slack.
+- **Slack-first** — no macOS notification fallback; configure a Slack app once per workspace.
 - **Wispr/clipboard is first-class** — what you dictate is the primary intent signal; screen corroborates.
-- **Sustained drift only** — no fixed 15-minute check-ins; chime after ~10 min off-goal + 25 min cooldown.
+- **Sustained drift only** — chime after ~10 min off-goal + 25 min cooldown.
 - **`fg review`** stays for end-of-session retrospectives (hours stitched into work blocks).
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for Familiar fork plans (Zoom audio, etc.).
@@ -40,6 +46,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for Familiar fork plans (Zoom a
 - Python 3.10+
 - [Familiar](https://familiar.ai) installed, recording enabled
 - `~/.familiar/settings.json` present (created by Familiar setup)
+- Slack app with Socket Mode — see [docs/SLACK.md](docs/SLACK.md)
 
 ### 2. Install Focus Guardian
 
@@ -52,28 +59,42 @@ pip install -e .
 fg init
 ```
 
-### 3. Set your goal
+### 3. Configure Slack
+
+```bash
+export SLACK_BOT_TOKEN="xoxb-..."
+export SLACK_APP_TOKEN="xapp-..."
+export SLACK_USER_ID="U01234567"
+```
+
+Full setup: [docs/SLACK.md](docs/SLACK.md).
+
+### 4. Set your focus
 
 ```bash
 fg profile job_search
-fg goal "Ship HiBob MVP slide + working demo" -k hibob,bob-onboard,cursor
+fg focus "This week: ship HiBob MVP slide + working demo" --cadence week
 ```
+
+Or DM the bot: *This week I'm focusing on the HiBob demo*.
 
 Config lives at **`~/.focus-guardian/config.json`**. Sync via iCloud or dotfiles if you want the same goals everywhere.
 
-### 4. Run (proactive — recommended)
+### 5. Run (proactive + interactive)
 
 ```bash
-fg guardian start          # background daemon
-fg guardian status         # one-shot drift evaluation (no notify unless sustained)
+fg guardian start          # proactive drift + scheduled reviews → Slack
+fg slack start             # interactive DM bot (focus, review, snooze)
+fg guardian status         # one-shot drift evaluation
 fg guardian once           # evaluate + notify if drift sustained
 fg review --human          # retrospective: work blocks + Wispr excerpts
 fg coach                   # coaching from last review or drift report
 fg status
 fg guardian stop
+fg slack stop
 ```
 
-Opt out of proactive nudges: set `"interventionMode": "manual"` in config.
+Opt out of proactive nudges: set `"interventionMode": "manual"` in config, or snooze via Slack: *pause alerts for 2 hours*.
 
 Legacy interval watch (only if not proactive): `fg watch start -i 45`
 
@@ -82,8 +103,9 @@ Legacy interval watch (only if not proactive): `fg watch start -i 45`
 1. Install Familiar + enable recording  
 2. `git clone` this repo (or copy the folder)  
 3. `pip install -e .` in a venv  
-4. `fg init` && `fg profile job_search`  
-5. `fg guardian start`
+4. Configure Slack ([docs/SLACK.md](docs/SLACK.md))  
+5. `fg init` && `fg profile job_search`  
+6. `fg guardian start` && `fg slack start`
 
 Optional: auto-start on login (macOS):
 
@@ -93,13 +115,16 @@ Optional: auto-start on login (macOS):
 
 ## Use with Claude Code / Codex / Cursor
 
-**Option A — Proactive notifications**  
-`fg guardian start` — macOS alerts when sustained drift is detected.
+**Option A — Proactive Slack alerts**  
+`fg guardian start` — drift DMs when sustained off-goal.
 
-**Option B — Retrospective**  
+**Option B — Slack bot**  
+`fg slack start` — set focus, ask *how did today go?*, *am I drifting?*
+
+**Option C — Retrospective**  
 `fg review --human` then `fg coach`
 
-**Option C — API coaching**  
+**Option D — API coaching**  
 ```bash
 export ANTHROPIC_API_KEY=...
 fg review && fg coach --api

@@ -44,8 +44,14 @@ def load_config() -> dict:
 
 
 def save_config(cfg: dict) -> None:
+    from focus_guardian.focus import prune_stack, sync_legacy_goal_fields
+
     p = config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
+    focus = dict(cfg.get("focus") or {})
+    focus["stack"] = prune_stack(list(focus.get("stack") or []))
+    cfg = {**cfg, "focus": focus}
+    cfg = sync_legacy_goal_fields(cfg)
     p.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
 
 
@@ -77,3 +83,11 @@ def slack_bot_pid_path() -> Path:
 
 def log_path() -> Path:
     return state_dir() / "check.log"
+
+
+def snooze_until_path() -> Path:
+    return state_dir() / "snooze_until.txt"
+
+
+def slack_pid_path() -> Path:
+    return state_dir() / "slack.pid"
