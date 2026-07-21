@@ -1,33 +1,32 @@
 # Anchor
 
-Portable productivity companion: **Familiar** watches what you do on screen and clipboard (including Wispr dictation); **Focus Guardian** detects sustained drift and nudges you via **Slack**.
-
-Works on any machine where Familiar is installed. Not tied to Cursor, Claude Code, or a specific IDE — use the CLI from Terminal, talk to the Slack bot in DM, or paste `fgr coach --print-prompt` into any AI tool.
+Portable productivity companion: **Familiar** watches what you do on screen and clipboard (including Wispr dictation); **Focus Guardian** detects sustained drift, nudges you via **Slack**, and coaches you in **Cursor / Claude** via MCP.
 
 ## Architecture
 
 ```
-┌─────────────┐     stills + .clipboard.txt   ┌──────────────────┐
-│  Familiar   │ ────────────────────────────► │ Focus Guardian   │
-│  (sensor)   │   OCR, titles, Wispr text     │  guardian daemon │
-└─────────────┘                               └────────┬─────────┘
-                                                       │
-                    ┌──────────────────────────────────┼──────────────────┐
-                    ▼                                  ▼                  ▼
-             Slack DM (drift + review)          drift engine         fgr review
-             + interactive bot                  (30m window)         (retrospective)
+┌─────────────┐     stills + Wispr          ┌──────────────────┐
+│  Familiar   │ ──────────────────────────► │ Focus Guardian   │
+│  (sensor)   │                             │  guardian daemon │
+└─────────────┘                             └────────┬─────────┘
+                                                     │
+                              live_context.json/md   │
+                                     ┌───────────────┴───────────────┐
+                                     ▼                               ▼
+                          Slack (short drift ping)        Cursor / Claude MCP
+                          proactive + snooze                synthesis + set focus
 ```
 
 | Layer | Role |
 |-------|------|
 | **Familiar** | Continuous screen + clipboard on each computer |
-| **Guardian** | Event-driven: new Familiar files → debounce → drift check → Slack DM |
-| **Slack bot** | Interactive DM — set focus, review, snooze (`fgr slack start`) |
-| **Review** | Deep retrospective over hours (`fgr review`) |
+| **Guardian** | Always monitoring → updates live context → Slack ping on drift |
+| **Slack** | Proactive short alerts; snooze; quick focus edits |
+| **Cursor / Claude MCP** | Full coaching, catch me up, configure focus (no API key) |
 
-**Primary interface:** Slack DM with the Focus Guardian app. Proactive alerts and on-demand commands both go through Slack.
+**Two interfaces:** Slack notifies you when you drift. Cursor or Claude synthesizes what Familiar saw and helps you re-focus. See [docs/MCP.md](docs/MCP.md).
 
-See [docs/SLACK.md](docs/SLACK.md) for app setup (Socket Mode, scopes, tokens).
+See [docs/SLACK.md](docs/SLACK.md) for Slack app setup (Socket Mode, scopes, tokens).
 
 ## Philosophy
 
@@ -115,25 +114,23 @@ Optional: auto-start on login (macOS):
 
 ## Use with Claude Desktop / Cursor / Codex (no API key)
 
-Install the optional MCP extra and wire the server into your host app:
-
 ```bash
 pip install -e ".[mcp]"
 ```
 
-See **[docs/MCP.md](docs/MCP.md)** for Claude Desktop, Cursor, and Codex CLI setup. The host app's subscription provides the model; Focus Guardian only exposes local tools (focus, drift, review).
+Wire MCP in your host app, then ask **"catch me up"** for full coaching. Guardian keeps `live_context.md` fresh for both Slack and MCP.
 
-**No LLM API key required** for Slack, guardian, or MCP — rule-based paths are the default. `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` are optional enrichments only.
+See **[docs/MCP.md](docs/MCP.md)** — Slack notifier + Cursor/Claude synthesis workflow.
+
+**No LLM API key required.** Guardian detects drift with rules; Slack sends short pings; Cursor/Claude interprets the live context dossier.
 
 ## Other interfaces
 
 **Proactive Slack alerts** — `fgr guardian start`
 
-**Slack bot** — `fgr slack start` (set focus, review, snooze)
+**Slack bot** — `fgr slack start` (snooze, quick focus; deep coaching → Cursor/Claude)
 
-**CLI retrospective** — `fgr review --human` then `fgr coach`
-
-**Optional API coaching** — `fgr coach --api` (needs a provider key)
+**CLI retrospective** — `fgr review --human`
 
 ## Drift signals (live guardian)
 

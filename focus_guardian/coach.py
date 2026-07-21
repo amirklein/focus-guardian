@@ -6,6 +6,7 @@ import json
 
 from focus_guardian import llm
 from focus_guardian.analyzer import Report
+from focus_guardian.coach_context import build_coach_context
 
 SYSTEM = """You are Focus Guardian, a direct productivity coach.
 The user pairs you with Familiar (screen activity summaries). You receive a JSON report of recent behavior patterns.
@@ -45,15 +46,26 @@ def coach_with_api(report: Report, model: str | None = None, cfg: dict | None = 
 
 
 def coach_drift_nudge(assessment, cfg: dict) -> str:
-    """Offline nudge for proactive drift chime."""
+    """Conversational nudge for proactive Slack drift ping."""
     from focus_guardian.drift import DriftAssessment
 
     if not isinstance(assessment, DriftAssessment):
         return ""
-    if assessment.suggested_nudge:
+
+    ctx = build_coach_context(cfg, drift=assessment)
+    focus = ctx.focus_text[:120] if ctx.has_focus else "your focus"
+
+    if ctx.recent_story:
+        story = ctx.recent_story[0].rstrip(".")
+        return f"{story} Your focus is {focus} — one concrete step on that for the next 25 minutes."
+
+    if assessment.suggested_nudge and not assessment.suggested_nudge.startswith("Return to:"):
         return assessment.suggested_nudge
-    goal = cfg.get("currentGoal", "your goal")
-    return f"Return to: {goal}. Next 25 min: one concrete deliverable."
+
+    if ctx.drift_evidence:
+        return f"{ctx.drift_evidence[:200]} — pick one deliverable on {focus} for the next 25 minutes."
+
+    return f"Looks like you've drifted from {focus}. Open your main work surface and set a 25-minute timer."
 
 
 def coach_offline(report: Report) -> str:

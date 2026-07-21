@@ -100,6 +100,9 @@
     "style": "coaching",
     "useApiForReview": false
   },
+  "coach": {
+    "redirectSlackToHost": true
+  },
   "driftRules": {
     "wisprOffTopic": true,
     "distractionStreak": true,
@@ -122,6 +125,7 @@
     "weekSchedule": "preset: mon-fri | sun-thu | sun-sat | mon-sun. Controls when weekly focus expires.",
     "notifications": "Slack only. Set SLACK_BOT_TOKEN + SLACK_APP_TOKEN + SLACK_USER_ID env vars (or config). Enable Socket Mode for the interactive bot.",
     "reviewSchedule": "Guardian sends daily/weekly Slack summaries. weekly.day=end uses weekSchedule endDay.",
-    "llm": "Optional: set GEMINI_API_KEY or ANTHROPIC_API_KEY for richer Slack/review text. Not required \u2014 guardian, Slack bot, and MCP work fully offline/rule-based. For foundation-model Q&A without any API key, use docs/MCP.md (Claude Desktop, Cursor, Codex)."
+    "llm": "Optional: set GEMINI_API_KEY or ANTHROPIC_API_KEY for richer Slack/review text. Not required — guardian, Slack bot, and MCP work fully offline/rule-based. For foundation-model Q&A without any API key, use docs/MCP.md (Claude Desktop, Cursor, Codex).",
+    "coach": "redirectSlackToHost: true sends short Slack snapshots for review/drift and points to Cursor/Claude for full coaching via MCP."
   }
 }
