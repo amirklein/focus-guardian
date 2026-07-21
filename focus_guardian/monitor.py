@@ -25,7 +25,7 @@ def run_once() -> dict:
 
             a = evaluate_and_chime(cfg)
             return a.to_dict()
-        return {"enabled": True, "interventionMode": mode, "skipped": f"{mode} — use fg guardian or fg review"}
+        return {"enabled": True, "interventionMode": mode, "skipped": f"{mode} — use fgr guardian or fgr review"}
     from focus_guardian.review import review_session
 
     review = review_session(cfg)
@@ -76,13 +76,13 @@ def start_monitor(interval_minutes: int | None = None, foreground: bool = False)
     if mode == "proactive":
         from focus_guardian.guardian import start_guardian
 
-        print("Note: fg watch is an alias for fg guardian in proactive mode.")
+        print("Note: fgr watch is an alias for fgr guardian in proactive mode.")
         return start_guardian(foreground=foreground)
 
     interval = interval_minutes or int(cfg.get("watchIntervalMinutes", 0))
     if interval <= 0:
         print(
-            "Background watch is off. Use: fg guardian start | fg review | fg coach"
+            "Background watch is off. Use: fgr guardian start | fgr review | fgr coach"
         )
         return 0
     if interval < 30:

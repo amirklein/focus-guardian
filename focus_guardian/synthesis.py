@@ -6,7 +6,6 @@ import json
 import re
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime
 
 from focus_guardian import llm
 from focus_guardian.analyzer import Finding
@@ -26,10 +25,6 @@ class ReviewDossier:
 
 def synthesis_cfg(cfg: dict) -> dict:
     return {**cfg.get("synthesis", {}), **cfg}
-
-
-def _fg_bin_hint() -> str:
-    return "~/focus-guardian/.venv/bin/fg"
 
 
 def build_dossier(
@@ -99,93 +94,52 @@ def _sentiment_notes(utterances) -> str | None:
     return None
 
 
+_OFFTRACK_MOVES = {
+    "polish_heavy_day": "Close the slides/mockups and open your build tool — get one working proof out, even rough.",
+    "latest_block_off_goal": "Re-read the brief, write one sentence for what ships today, and do only that.",
+    "known_anti_pattern": "Break the loop you fell into — set a 25-minute timer on the one deliverable that matters.",
+    "meeting_plus_polish": "After meetings, spend 25 minutes on the artifact you'd actually submit, not more research.",
+}
+
+
 def synthesize_review_offline(dossier: ReviewDossier, cfg: dict) -> str:
-    """Rich coaching-style narrative without an API."""
-    goal = dossier.goal or "(no goal set — run: fg goal \"your focus for today\")"
-    lines: list[str] = []
+    """Warm, conversational recap without an API — a few sentences, not a report."""
+    goal = dossier.goal or "your focus"
+    sentences: list[str] = []
 
-    lines.append("═" * 60)
-    lines.append("FOCUS GUARDIAN — SESSION SYNTHESIS")
-    lines.append("═" * 60)
-    lines.append("")
-
-    # Headline story
     if not dossier.blocks:
-        lines.append("## The story")
-        lines.append(
-            f"In the last {dossier.lookback_hours:.0f} hours I didn't see sustained work blocks "
-            "(gaps may mean breaks, Familiar paused, or light activity)."
+        sentences.append(
+            f"I didn't see sustained work blocks in the last {dossier.lookback_hours:.0f} hours — "
+            "could be breaks, Familiar paused, or a quiet stretch."
         )
     else:
         first, last = dossier.blocks[0], dossier.blocks[-1]
         span = f"{first.start.strftime('%H:%M')}–{last.end.strftime('%H:%M')}"
-        lines.append("## The story")
-        lines.append(
-            f"You were active from roughly {span}. "
-            + (dossier.activity_notes[0] if dossier.activity_notes else "")
+        story = f"You were active from {span}, working toward {goal}."
+        if dossier.activity_notes:
+            story += " " + " ".join(dossier.activity_notes)
+        sentences.append(story)
+
+    tone = _sentiment_notes(dossier.utterances)
+    if tone:
+        sentences.append(tone)
+
+    if dossier.findings:
+        f = dossier.findings[0]
+        sentences.append(f"One thing worth naming: {f.message.rstrip('.')} — {f.evidence}")
+    else:
+        sentences.append("No real drift from your focus in this window — nice and steady.")
+
+    if dossier.findings:
+        move = _OFFTRACK_MOVES.get(
+            dossier.findings[0].code,
+            f"For the next 90 minutes: get back to {goal}, one shippable step, then stop.",
         )
-        for note in dossier.activity_notes[1:]:
-            lines.append(note)
-
-    lines.append("")
-    lines.append(f"**Stated goal:** {goal}")
-    lines.append("")
-
-    # Chronology (shorter than raw dump)
-    if dossier.blocks:
-        lines.append("## How the day unfolded")
-        for b in dossier.blocks[-6:]:
-            apps = ", ".join(a for a, _ in b.dominant_apps[:2])
-            lines.append(
-                f"- **{b.start.strftime('%H:%M')}–{b.end.strftime('%H:%M')}** — {b.label}"
-                + (f" ({apps})" if apps else "")
-            )
-            trans = [e for e in b.events if e.kind == "transcription"]
-            if trans:
-                excerpt = trans[-1].detail.replace("\n", " ")[:180]
-                lines.append(f"  - *You said:* \"{excerpt}…\"")
-        lines.append("")
-
-    # Wispr / intent layer
-    themes = _wispr_themes(dossier.utterances)
-    if themes:
-        lines.append("## What you were actually thinking (Wispr)")
-        for i, t in enumerate(themes, 1):
-            lines.append(f"{i}. \"{t}…\"")
-        tone = _sentiment_notes(dossier.utterances)
-        if tone:
-            lines.append(f"\n*{tone}*")
-        lines.append("")
-
-    # Drift & patterns
-    if dossier.findings:
-        lines.append("## Where you drifted (or risked it)")
-        for f in dossier.findings:
-            lines.append(f"- **{f.message}** — {f.evidence}")
-        lines.append("")
     else:
-        lines.append("## Drift check")
-        lines.append("No strong drift patterns vs your goal in this window.")
-        lines.append("")
+        move = f"For the next 90 minutes: stay on {goal} and keep new tabs and critique loops out of the way."
+    sentences.append(move)
 
-    # One clear next move
-    lines.append("## One move for the next 90 minutes")
-    if dossier.findings:
-        code = dossier.findings[0].code
-        moves = {
-            "polish_heavy_day": "Close Slides/Lovable. Open your build tool and produce one working proof — even rough.",
-            "latest_block_off_goal": "Re-read the assignment brief. Write one sentence: what ships today. Do only that.",
-            "known_anti_pattern": "Stop the loop you fell into. Set a 25-minute timer on the primary deliverable.",
-            "meeting_plus_polish": "After meetings: 25 minutes on the artifact you'd submit, not more research.",
-        }
-        lines.append(moves.get(code, f"Return to: {goal}. One shippable increment, then stop."))
-    else:
-        lines.append(f"Stay on: {goal}. Protect the next block from new tabs and critique loops.")
-
-    lines.append("")
-    lines.append("—")
-    lines.append(f"*Generated {datetime.now().strftime('%Y-%m-%d %H:%M')} · {_fg_bin_hint()} review --human*")
-    return "\n".join(lines)
+    return " ".join(sentences)
 
 
 def synthesize_review_api(dossier: ReviewDossier, cfg: dict) -> str:
@@ -208,15 +162,13 @@ def synthesize_review_api(dossier: ReviewDossier, cfg: dict) -> str:
         "findings": [{"code": f.code, "message": f.message, "evidence": f.evidence} for f in dossier.findings],
         "notes": dossier.activity_notes,
     }
-    system = f"""You are Focus Guardian writing a session synthesis for a job-searching professional.
-Style: {style}. Warm, direct, senior-coach tone — not a dry activity log.
-Structure with markdown headings:
-1. The story (2-4 sentences — arc of the session vs their goal)
-2. What worked
-3. Drift & friction (honest, specific)
-4. What their dictation revealed (intent, emotion, avoidance if any)
-5. One move for the next 90 minutes (single concrete action)
-Under 400 words. No bullet lists longer than 4 items."""
+    system = f"""You are Focus Guardian, texting a quick session recap to someone you're coaching.
+Style: {style}. Warm, direct, like a supportive colleague — not a report.
+Write 3-5 short plain sentences, flowing as prose (no markdown headings, no banners, no numbered
+sections). Cover, in this order: what the session looked like vs their goal; anything worth naming
+about drift or friction (only if real — otherwise reassure them they're on track); what their
+dictation revealed if it's telling (skip if nothing notable); and end with exactly one concrete move
+for the next 90 minutes. Under 120 words total."""
     try:
         return llm.chat(system, json.dumps(payload, indent=2), max_tokens=900, cfg=cfg)
     except llm.LLMError as e:

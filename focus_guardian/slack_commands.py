@@ -8,15 +8,17 @@ from typing import Any
 
 from focus_guardian.drift import evaluate_drift
 from focus_guardian.focus import (
+    NO_FOCUS_HINT,
     WEEK_PRESETS,
     add_focus_entry,
     clear_focus_cadence,
     format_focus_status,
+    has_active_focus,
     resolve_active_focus,
     with_resolved_focus,
 )
 from focus_guardian.llm import parse_intent
-from focus_guardian.paths import last_report_path, load_config, save_config
+from focus_guardian.paths import focus_markdown_path, last_report_path, load_config, save_config
 from focus_guardian.review import review_session
 from focus_guardian.snooze import (
     clear_snooze,
@@ -46,7 +48,7 @@ HELP_TEXT = """*Focus Guardian* — talk to me in plain language.
 *Week schedule*
 • _Set week to sun-thu_
 
-Proactive drift alerts come from `fg guardian start`. I'm the interactive side (`fg slack start`)."""
+Proactive drift alerts come from `fgr guardian start`. I'm the interactive side (`fgr slack start`)."""
 
 
 def detect_intent(text: str) -> str:
@@ -132,7 +134,7 @@ def _handle_set_focus(text: str, args: dict[str, Any] | None, cfg: dict) -> str:
     cadence = args.get("cadence") if args else None
     cfg = add_focus_entry(cfg, body, cadence=cadence)
     save_config(cfg)
-    return f"Got it.\n\n{format_focus_status(cfg)}"
+    return f"Got it.\n\n{format_focus_status(cfg)}\n\n_Saved to {focus_markdown_path()}_"
 
 
 def _handle_show_focus(cfg: dict) -> str:
@@ -176,6 +178,8 @@ def _handle_status(cfg: dict) -> str:
 
 
 def _handle_review(cfg: dict) -> str:
+    if not has_active_focus(cfg):
+        return NO_FOCUS_HINT
     review = review_session(cfg)
     out = review.to_dict()
     last_report_path().write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
@@ -184,24 +188,21 @@ def _handle_review(cfg: dict) -> str:
 
 
 def _handle_drift(cfg: dict) -> str:
+    if not has_active_focus(cfg):
+        return NO_FOCUS_HINT
     cfg = with_resolved_focus(cfg)
     assessment = evaluate_drift(cfg)
     out = assessment.to_dict()
     last_report_path().write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
     resolved = resolve_active_focus(cfg)
-    lines = [
-        "*Drift check*",
-        f"*Focus:* {resolved.text[:200]}",
-        f"*Chime-worthy:* {'yes' if assessment.should_chime else 'no'}",
-        f"*Reason:* {assessment.reason[:300]}",
-    ]
-    if assessment.wispr_excerpt:
-        lines.append(f"_Wispr:_ {assessment.wispr_excerpt[:300]}")
-    if assessment.codes:
-        lines.append(f"*Signals:* {', '.join(assessment.codes)}")
+
+    if assessment.should_chime:
+        lines = [f"You're drifting from *{resolved.text[:200]}* — {assessment.evidence[:300]}"]
+    else:
+        lines = [f"Looking good — no real drift from *{resolved.text[:200]}* right now."]
     if assessment.suggested_nudge:
-        lines.append(f"*Nudge:* {assessment.suggested_nudge[:300]}")
-    return "\n".join(lines)
+        lines.append(assessment.suggested_nudge[:300])
+    return "\n\n".join(lines)
 
 
 def _handle_snooze(text: str, args: dict[str, Any] | None) -> str:
@@ -253,7 +254,7 @@ def handle_message(text: str, user_id: str) -> str:
     cfg = load_config()
     stripped = text.strip()
 
-    llm_result = parse_intent(stripped, _build_context(cfg))
+    llm_result = parse_intent(stripped, _build_context(cfg), cfg)
     if llm_result and llm_result.get("action"):
         action = llm_result["action"]
         args = llm_result.get("args") or {}

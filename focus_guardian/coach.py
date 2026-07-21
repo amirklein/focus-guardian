@@ -35,7 +35,7 @@ def format_prompt(report: Report, narrative: str | None = None) -> str:
 def coach_with_api(report: Report, model: str | None = None, cfg: dict | None = None) -> str:
     if llm.active_provider(cfg) is None:
         raise RuntimeError(
-            "Set GEMINI_API_KEY or ANTHROPIC_API_KEY for API coaching, or use: fg coach --print"
+            "Set GEMINI_API_KEY or ANTHROPIC_API_KEY for API coaching, or use: fgr coach --print"
         )
     try:
         text = llm.chat(SYSTEM, format_prompt(report), max_tokens=400, cfg=cfg, model=model)

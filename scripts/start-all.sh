@@ -3,15 +3,15 @@
 
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-FG="${REPO}/.venv/bin/fg"
+FGR="${REPO}/.venv/bin/fgr"
 
-if [[ ! -x "${FG}" ]]; then
+if [[ ! -x "${FGR}" ]]; then
   echo "Missing venv. Run: cd ${REPO} && python3.12 -m venv .venv && source .venv/bin/activate && pip install -e ."
   exit 1
 fi
 
-"${FG}" slack check || exit 1
-"${FG}" init
-"${FG}" slack start
-"${FG}" guardian start
-"${FG}" status
+"${FGR}" slack check || exit 1
+"${FGR}" init
+"${FGR}" slack start
+"${FGR}" guardian start
+"${FGR}" status

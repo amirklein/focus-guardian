@@ -6,10 +6,14 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "certifi>=2024.0.0",
-    "slack-sdk[socket_mode]>=3.21.0",
+    "slack-sdk>=3.21.0",
 ]
 
+[project.optional-dependencies]
+mcp = ["mcp[cli]>=1.2.0"]
+
 [project.scripts]
+fgr = "focus_guardian.cli:main"
 fg = "focus_guardian.cli:main"
 
 [build-system]

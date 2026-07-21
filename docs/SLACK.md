@@ -4,12 +4,14 @@ Focus Guardian uses Slack in two ways:
 
 | Daemon | Command | Role |
 |--------|---------|------|
-| **Guardian** | `fg guardian start` | Proactive drift alerts + scheduled reviews (outbound DMs) |
-| **Slack bot** | `fg slack start` | Interactive DM listener — set focus, check drift, snooze alerts |
+| **Guardian** | `fgr guardian start` | Proactive drift alerts + scheduled reviews (outbound DMs) |
+| **Slack bot** | `fgr slack start` | Interactive DM listener — set focus, check drift, snooze alerts |
 
 Both daemons can run at the same time. The bot is your primary interface; the guardian watches Familiar and pushes alerts when you drift.
 
 ## 0. Local install (do this first)
+
+**zsh users:** `fg` is a shell builtin (job control). Use **`fgr`** as the CLI command, or bypass with `command fg` / `.venv/bin/fg`.
 
 macOS ships Python 3.9 and no `python` command — use a venv with **Python 3.10+**:
 
@@ -26,7 +28,7 @@ Always use the venv (not bare `python3` from Homebrew outside the venv):
 
 ```bash
 source ~/Projects/focus-guardian/.venv/bin/activate
-fg --version
+fgr --version
 ```
 
 **Outbound ping test** (needs `SLACK_BOT_TOKEN` + `SLACK_USER_ID` in `~/.zshrc`):
@@ -44,7 +46,7 @@ print('Sent')
 **Verify full Slack setup:**
 
 ```bash
-fg slack check
+fgr slack check
 ```
 
 **Start everything:**
@@ -52,8 +54,8 @@ fg slack check
 ```bash
 ./scripts/start-all.sh
 # or manually:
-fg slack start -f    # debug interactive bot first
-fg guardian start
+fgr slack start -f    # debug interactive bot first
+fgr guardian start
 ```
 
 ## 1. Create a Slack app
@@ -132,16 +134,16 @@ Only messages from `SLACK_USER_ID` are handled; everyone else is ignored.
 pip install -e .
 
 # Proactive drift + scheduled reviews (outbound)
-fg guardian start
+fgr guardian start
 
 # Interactive DM bot (inbound)
-fg slack start
+fgr slack start
 
 # Foreground (debugging)
-fg slack start -f
+fgr slack start -f
 ```
 
-Stop with `fg guardian stop` and `fg slack stop`.
+Stop with `fgr guardian stop` and `fgr slack stop`.
 
 PID files: `~/.focus-guardian/state/guardian.pid` and `slack.pid`.
 
@@ -159,7 +161,7 @@ Open a DM with **Focus Guardian** in Slack. Examples:
 | *Resume alerts* | Turns alerts back on |
 | *help* | Full command list |
 
-Proactive drift chimes and daily/weekly reviews still come from `fg guardian start` unless snoozed.
+Proactive drift chimes and daily/weekly reviews still come from `fgr guardian start` unless snoozed.
 
 ## 5. Optional LLM intent parsing
 
@@ -174,9 +176,10 @@ export FOCUS_GUARDIAN_MODEL="claude-sonnet-4-20250514"  # optional override
 
 | Symptom | Fix |
 |---------|-----|
+| `fg: job not found: slack` | zsh builtin `fg` shadowed the CLI — use `fgr slack check` instead |
 | `SLACK_BOT_TOKEN not set` | Export token or set `notifications.slack.botToken` |
 | `SLACK_APP_TOKEN not set` | Enable Socket Mode; export app token |
-| Bot never replies | Check `message.im` subscription; restart `fg slack start -f` |
+| Bot never replies | Check `message.im` subscription; restart `fgr slack start -f` |
 | Wrong user gets replies | Set `SLACK_USER_ID` to your member ID |
 | Alerts still firing while snoozed | Snooze only affects guardian notifications; use *resume alerts* to clear |
 | Logs | `~/.focus-guardian/state/check.log` |

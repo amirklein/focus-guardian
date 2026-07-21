@@ -6,6 +6,7 @@ import re
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 DAY_NAMES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -17,6 +18,14 @@ WEEK_PRESETS: dict[str, tuple[str, str]] = {
     "sun-sat": ("sun", "sat"),
     "mon-sun": ("mon", "sun"),
 }
+
+
+NO_FOCUS_HINT = (
+    "You haven't told me what to focus on yet — try: "
+    "\"This week I'm focusing on X\"."
+)
+
+_PLACEHOLDER_GOAL_PREFIXES = ("set focus with:",)
 
 
 @dataclass
@@ -282,6 +291,19 @@ def resolve_active_focus(cfg: dict, now: datetime | None = None) -> ResolvedFocu
     )
 
 
+def has_active_focus(cfg: dict) -> bool:
+    """True once the user has set a real focus (via the stack, or a legacy
+    ``currentGoal``); False if nothing has ever been set — i.e. still on the
+    config template's placeholder text."""
+    resolved = resolve_active_focus(cfg)
+    if resolved.cadence != "legacy":
+        return True
+    text = (resolved.text or "").strip()
+    if not text or text == "(no focus set)":
+        return False
+    return not text.lower().startswith(_PLACEHOLDER_GOAL_PREFIXES)
+
+
 def with_resolved_focus(cfg: dict) -> dict:
     """Return config copy with legacy goal fields synced from focus stack."""
     pruned = deepcopy(cfg)
@@ -328,3 +350,47 @@ def format_focus_status(cfg: dict) -> str:
         for e in stack:
             lines.append(f"  • [{e.get('cadence')}] {e.get('text', '')[:70]}")
     return "\n".join(lines)
+
+
+def write_focus_markdown(cfg: dict) -> Path:
+    """Persist the current focus stack as a small markdown file — a dynamic,
+    always-current source of truth other tools (or you) can open directly."""
+    from focus_guardian.paths import focus_markdown_path
+
+    lines = ["# Focus Guardian — current focus", ""]
+
+    if not has_active_focus(cfg):
+        lines.append("_No focus set yet — tell the bot what you're working on, e.g._")
+        lines.append("_\"This week I'm focusing on X\"_")
+    else:
+        resolved = resolve_active_focus(cfg)
+        lines.append(f"**{resolved.cadence_label}:** {resolved.text}")
+        if resolved.priorities:
+            lines.append("")
+            lines.append("Priorities:")
+            for p in resolved.priorities:
+                lines.append(f"- {p}")
+        if resolved.avoid:
+            lines.append("")
+            lines.append(f"Avoid: {', '.join(resolved.avoid)}")
+        if resolved.expires_at:
+            lines.append("")
+            lines.append(f"_Expires: {resolved.expires_at}_")
+
+    ws = week_schedule(cfg)
+    lines.append("")
+    lines.append(f"Week schedule: {ws['preset']} ({ws['startDay']} → {ws['endDay']})")
+
+    stack = (cfg.get("focus") or {}).get("stack") or []
+    if len(stack) > 1:
+        lines.append("")
+        lines.append("## Full stack")
+        for e in stack:
+            lines.append(f"- **[{e.get('cadence')}]** {e.get('text', '')}")
+
+    lines.append("")
+    lines.append(f"_Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}_")
+
+    path = focus_markdown_path()
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path

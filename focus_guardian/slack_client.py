@@ -10,7 +10,7 @@ import urllib.request
 from typing import Any
 
 
-def _ssl_context() -> ssl.SSLContext:
+def ssl_context() -> ssl.SSLContext:
     """Use certifi CA bundle (fixes Homebrew Python SSL on macOS)."""
     try:
         import certifi
@@ -18,6 +18,9 @@ def _ssl_context() -> ssl.SSLContext:
         return ssl.create_default_context(cafile=certifi.where())
     except ImportError:
         return ssl.create_default_context()
+
+
+_ssl_context = ssl_context  # backwards-compat alias
 
 
 class SlackError(RuntimeError):

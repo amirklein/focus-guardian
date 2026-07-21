@@ -104,7 +104,7 @@ def maybe_notify(report: Report, cfg: dict) -> bool:
         focus_text=focus.text or report.goal,
         wispr_excerpt="",
         reason=summary[:300],
-        nudge="Run `fg review --human` for a full recap.",
+        nudge="Run `fgr review --human` for a full recap.",
         expires_at=focus.expires_at,
     )
     try:

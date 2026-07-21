@@ -5,7 +5,7 @@
 Open **Terminal** (Spotlight → type `Terminal`), then paste:
 
 ```bash
-~/focus-guardian/.venv/bin/fg
+~/focus-guardian/.venv/bin/fgr
 ```
 
 Add a word after that: `paths`, `goal`, `review --human`, `drift`, `status`.
@@ -17,7 +17,7 @@ Add a word after that: `paths`, `goal`, `review --human`, `drift`, `status`.
 Run:
 
 ```bash
-~/focus-guardian/.venv/bin/fg paths
+~/focus-guardian/.venv/bin/fgr paths
 ```
 
 You’ll see:
@@ -36,25 +36,25 @@ You’ll see:
 1. In the **Familiar app** → **Settings** → change the **data / context folder** to e.g. iCloud Drive  
 2. Familiar keeps writing there  
 3. On another Mac, install Familiar and **choose the same folder**  
-4. Install Focus Guardian there — `fg paths` should show the same stills path  
+4. Install Focus Guardian there — `fgr paths` should show the same stills path  
 
 To copy only your **goals** (small file), copy:  
 `~/.focus-guardian/config.json`
 
 ---
 
-## Setting your focus for the day (`fg goal`)
+## Setting your focus for the day (`fgr goal`)
 
 **See what’s set now:**
 
 ```bash
-~/focus-guardian/.venv/bin/fg goal
+~/focus-guardian/.venv/bin/fgr goal
 ```
 
 **Set today’s focus** (plain sentence in quotes):
 
 ```bash
-~/focus-guardian/.venv/bin/fg goal "HiBob slide and working demo today"
+~/focus-guardian/.venv/bin/fgr goal "HiBob slide and working demo today"
 ```
 
 That’s it. No `-k` required unless you want extra words that count as “on topic.”
@@ -62,13 +62,13 @@ That’s it. No `-k` required unless you want extra words that count as “on to
 **Optional — extra on-topic words** (comma-separated, no spaces after commas):
 
 ```bash
-~/focus-guardian/.venv/bin/fg goal "HiBob demo" -k hibob,cursor,slides
+~/focus-guardian/.venv/bin/fgr goal "HiBob demo" -k hibob,cursor,slides
 ```
 
 **Optional — review looks back 4 hours instead of 6:**
 
 ```bash
-~/focus-guardian/.venv/bin/fg goal --hours 4
+~/focus-guardian/.venv/bin/fgr goal --hours 4
 ```
 
 Guardian uses this goal + keywords to decide if Wispr dictation and your tabs are on track.
@@ -78,7 +78,7 @@ Guardian uses this goal + keywords to decide if Wispr dictation and your tabs ar
 ## Session recap (synthesized, not dry)
 
 ```bash
-~/focus-guardian/.venv/bin/fg review --human
+~/focus-guardian/.venv/bin/fgr review --human
 ```
 
 You get sections like: **The story**, **How the day unfolded**, **What you were thinking (Wispr)**, **Drift**, **One move for the next 90 minutes**.
@@ -87,7 +87,7 @@ You get sections like: **The story**, **How the day unfolded**, **What you were 
 
 ```bash
 export ANTHROPIC_API_KEY=your_key_here
-~/focus-guardian/.venv/bin/fg review --human --api
+~/focus-guardian/.venv/bin/fgr review --human --api
 ```
 
 ---
@@ -97,7 +97,7 @@ export ANTHROPIC_API_KEY=your_key_here
 **See what’s on:**
 
 ```bash
-~/focus-guardian/.venv/bin/fg drift
+~/focus-guardian/.venv/bin/fgr drift
 ```
 
 **Edit rules** — open in any text editor:
@@ -120,8 +120,8 @@ Also edit `"distractionTitlePatterns"` for tab titles (linkedin, youtube, etc.).
 - Keeps watching Familiar; notifies only after sustained drift (~10 min), not every 15 min  
 
 ```bash
-~/focus-guardian/.venv/bin/fg guardian start   # if you need to restart it
-~/focus-guardian/.venv/bin/fg status           # quick health check
+~/focus-guardian/.venv/bin/fgr guardian start   # if you need to restart it
+~/focus-guardian/.venv/bin/fgr status           # quick health check
 ```
 
 ---

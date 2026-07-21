@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta
 
-from focus_guardian.focus import with_resolved_focus
+from focus_guardian.focus import has_active_focus, with_resolved_focus
 from focus_guardian.notify import notify_review
 from focus_guardian.paths import state_dir
 from focus_guardian.review import review_session
@@ -76,6 +76,8 @@ def _should_fire_weekly(cfg: dict, now: datetime, state: dict) -> bool:
 
 
 def _run_scheduled_review(cfg: dict, kind: str) -> bool:
+    if not has_active_focus(cfg):
+        return False
     sched = (cfg.get("reviewSchedule") or {}).get(kind) or {}
     hours = float(sched.get("lookbackHours") or cfg.get("lookbackHours", 6))
     run_cfg = with_resolved_focus({**cfg, "lookbackHours": hours})

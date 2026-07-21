@@ -2,7 +2,7 @@
   "enabled": true,
   "activeProfile": "job_search",
   "interventionMode": "proactive",
-  "currentGoal": "Set focus with: fg focus \"...\" --cadence week",
+  "currentGoal": "Set focus with: fgr focus \"...\" --cadence week",
   "goalKeywords": [],
   "assignmentKeywords": [],
   "familiarStillsPath": null,
@@ -67,10 +67,26 @@
     "etrade",
     "stock plan"
   ],
-  "distractionApps": ["‎WhatsApp", "Spotify"],
-  "buildSurfaces": ["Cursor", "Terminal", "Visual Studio Code", "Code"],
-  "researchSurfaces": ["Claude", "Google Chrome"],
-  "polishTitlePatterns": ["google slides", "lovable", "gemini", "preview"],
+  "distractionApps": [
+    "\u200eWhatsApp",
+    "Spotify"
+  ],
+  "buildSurfaces": [
+    "Cursor",
+    "Terminal",
+    "Visual Studio Code",
+    "Code"
+  ],
+  "researchSurfaces": [
+    "Claude",
+    "Google Chrome"
+  ],
+  "polishTitlePatterns": [
+    "google slides",
+    "lovable",
+    "gemini",
+    "preview"
+  ],
   "successSignals": [
     "time on assignment brief + deliverable",
     "submitted or rehearsed narrative"
@@ -93,14 +109,19 @@
     "wisprDistractionSpike": true,
     "sentimentEnabled": true,
     "useApiForDrift": false,
-    "offTopicPhrases": ["bread making", "dating apps", "vacation planning"],
+    "offTopicPhrases": [
+      "bread making",
+      "dating apps",
+      "vacation planning"
+    ],
     "onTopicPhrases": []
   },
   "_comments": {
-    "interventionMode": "proactive = fg guardian start (event-driven drift). manual = opt-out.",
-    "focus": "fg focus sets day/week/month stack. Day overrides week overrides month.",
+    "interventionMode": "proactive = fgr guardian start (event-driven drift). manual = opt-out.",
+    "focus": "fgr focus sets day/week/month stack. Day overrides week overrides month.",
     "weekSchedule": "preset: mon-fri | sun-thu | sun-sat | mon-sun. Controls when weekly focus expires.",
     "notifications": "Slack only. Set SLACK_BOT_TOKEN + SLACK_APP_TOKEN + SLACK_USER_ID env vars (or config). Enable Socket Mode for the interactive bot.",
-    "reviewSchedule": "Guardian sends daily/weekly Slack summaries. weekly.day=end uses weekSchedule endDay."
+    "reviewSchedule": "Guardian sends daily/weekly Slack summaries. weekly.day=end uses weekSchedule endDay.",
+    "llm": "Optional: set GEMINI_API_KEY or ANTHROPIC_API_KEY for richer Slack/review text. Not required \u2014 guardian, Slack bot, and MCP work fully offline/rule-based. For foundation-model Q&A without any API key, use docs/MCP.md (Claude Desktop, Cursor, Codex)."
   }
 }

@@ -1,4 +1,4 @@
-"""CLI: fg review | coach | goal | profile | watch | status"""
+"""CLI: fgr review | coach | goal | profile | watch | status"""
 
 from __future__ import annotations
 
@@ -11,17 +11,29 @@ from focus_guardian.analyzer import Finding, Report, analyze
 from focus_guardian.coach import coach_offline, coach_with_api, format_prompt
 from focus_guardian.drift import evaluate_drift
 from focus_guardian.guardian import evaluate_and_chime, start_guardian, stop_guardian
+from focus_guardian.slack_setup import print_slack_check
+from focus_guardian.slack_bot import start_slack_bot, stop_slack_bot
 from focus_guardian.monitor import run_once, start_monitor, stop_monitor
-from focus_guardian.notify import maybe_notify
+from focus_guardian.notify import maybe_notify, notify_review
 from focus_guardian.paths import (
     config_path,
     ensure_config,
+    focus_markdown_path,
     last_report_path,
     load_config,
     save_config,
 )
 from focus_guardian.drift_config import drift_rules
 from focus_guardian.familiar import familiar_settings_path, stills_root as get_stills
+from focus_guardian.focus import (
+    NO_FOCUS_HINT,
+    WEEK_PRESETS,
+    add_focus_entry,
+    clear_focus_cadence,
+    format_focus_status,
+    has_active_focus,
+    resolve_active_focus,
+)
 from focus_guardian.profiles import apply_profile, list_profiles
 from focus_guardian.review import review_session
 
@@ -45,15 +57,23 @@ def _report_from_saved(data: dict) -> tuple[Report, str | None]:
 
 def cmd_review(args: argparse.Namespace) -> int:
     cfg = load_config()
+    if not has_active_focus(cfg):
+        print(NO_FOCUS_HINT)
+        return 0
     if getattr(args, "api", False):
         cfg = {**cfg, "synthesis": {**cfg.get("synthesis", {}), "useApiForReview": True}}
     review = review_session(cfg)
     out = review.to_dict()
     last_report_path().write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
 
-    if args.notify and review.should_notify:
-        report, _ = _report_from_saved(out)
-        maybe_notify(report, cfg)
+    if args.notify:
+        title = "session review" if args.human else "review alert"
+        notify_review(
+            cfg,
+            title=title,
+            narrative=review.narrative if args.human else "",
+            summary=review.summary,
+        )
 
     if args.human or args.synthesize:
         print(review.narrative)
@@ -63,7 +83,7 @@ def cmd_review(args: argparse.Namespace) -> int:
 
 
 def cmd_check(args: argparse.Namespace) -> int:
-    """Short snapshot (legacy). Prefer `fg review`."""
+    """Short snapshot (legacy). Prefer `fgr review`."""
     cfg = load_config()
     report = analyze(cfg)
     out = report.to_dict()
@@ -121,38 +141,76 @@ def _goal_words_from_text(text: str) -> list[str]:
 
 
 def cmd_goal(args: argparse.Namespace) -> int:
+    """Legacy alias for `fgr focus`."""
+    if args.hours is not None and not args.words:
+        cfg = load_config()
+        cfg["lookbackHours"] = args.hours
+        save_config(cfg)
+        print(f"Review window: {args.hours}h")
+        return 0
+    focus_args = argparse.Namespace(
+        words=args.words,
+        cadence=None,
+        priorities=args.keywords if args.keywords else None,
+        avoid=None,
+        week=None,
+        clear=None,
+    )
+    if args.words and args.auto_keywords and not args.keywords:
+        focus_args.priorities = None
+    return cmd_focus(focus_args)
+
+
+def cmd_focus(args: argparse.Namespace) -> int:
     cfg = load_config()
-    if not args.words:
-        print("Your focus right now")
-        print("─" * 40)
-        print(f"Goal:    {cfg.get('currentGoal', '(not set)')}")
-        print(f"Keywords: {', '.join(cfg.get('goalKeywords', []))}")
-        print(f"Review window: {cfg.get('lookbackHours', 6)} hours")
-        print()
-        print("To set today's focus, paste ONE line in Terminal:")
-        print('  ~/focus-guardian/.venv/bin/fg goal "HiBob slide and working demo"')
-        print()
-        print("Optional — extra words that count as on-topic (comma-separated):")
-        print('  ~/focus-guardian/.venv/bin/fg goal "HiBob demo" -k hibob,cursor,slides')
-        print()
-        print("Optional — how far back reviews look:")
-        print("  ~/focus-guardian/.venv/bin/fg goal --hours 4")
+
+    if getattr(args, "week", None):
+        ws = dict(cfg.get("weekSchedule") or {})
+        preset = args.week.lower()
+        if preset not in WEEK_PRESETS:
+            print(f"Unknown week preset: {preset}. Choose: {', '.join(WEEK_PRESETS)}")
+            return 1
+        ws["preset"] = preset
+        cfg["weekSchedule"] = ws
+        save_config(cfg)
+        print(f"Week schedule set to {preset}.")
         return 0
 
-    cfg["currentGoal"] = " ".join(args.words)
-    if args.hours is not None:
-        cfg["lookbackHours"] = args.hours
-    if args.keywords:
-        cfg["goalKeywords"] = [k.strip() for k in args.keywords.split(",") if k.strip()]
-    elif args.auto_keywords:
-        extra = _goal_words_from_text(cfg["currentGoal"])
-        base = [k.lower() for k in cfg.get("goalKeywords", [])]
-        cfg["goalKeywords"] = list(dict.fromkeys(base + extra))
+    if getattr(args, "clear", None):
+        cfg = clear_focus_cadence(cfg, args.clear)
+        save_config(cfg)
+        print(f"Cleared {args.clear} focus.")
+        print(format_focus_status(cfg))
+        return 0
+
+    if not args.words:
+        print(format_focus_status(cfg))
+        print()
+        print("Set focus (natural language):")
+        print('  fgr focus "This week explore pricing, competitor analysis, and GTM" --cadence week')
+        print('  fgr focus "Today: finish competitor spreadsheet" --cadence day')
+        print('  fgr focus --week sun-thu')
+        return 0
+
+    text = " ".join(args.words)
+    priorities = None
+    if getattr(args, "priorities", None):
+        priorities = [p.strip() for p in args.priorities.split(",") if p.strip()]
+    avoid = None
+    if getattr(args, "avoid", None):
+        avoid = [a.strip() for a in args.avoid.split(",") if a.strip()]
+
+    cfg = add_focus_entry(
+        cfg,
+        text,
+        cadence=getattr(args, "cadence", None),
+        priorities=priorities,
+        avoid=avoid,
+    )
     save_config(cfg)
-    print("Updated.")
-    print(f"Goal: {cfg.get('currentGoal')}")
-    print(f"Keywords: {', '.join(cfg.get('goalKeywords', []))}")
-    print(f"Review window: {cfg.get('lookbackHours', 6)}h")
+    print("Focus updated.")
+    print(format_focus_status(cfg))
+    print(f"\nSaved to {focus_markdown_path()}")
     return 0
 
 
@@ -187,6 +245,9 @@ def cmd_paths(_: argparse.Namespace) -> int:
 
     print(f"\n3. Your goals & drift rules:")
     print(f"   {config_path()}")
+
+    print(f"\n4. Your current focus (auto-updated markdown):")
+    print(f"   {focus_markdown_path()}")
 
     print("\n" + "─" * 50)
     print("To move Familiar data (e.g. iCloud):")
@@ -245,7 +306,7 @@ def cmd_profile(args: argparse.Namespace) -> int:
     print(f"Goal: {merged.get('currentGoal')}")
     print(f"Mode: {merged.get('interventionMode')}")
     if merged.get("interventionMode") == "proactive":
-        print("Run: fg guardian start")
+        print("Run: fgr guardian start")
     return 0
 
 
@@ -262,7 +323,8 @@ def cmd_status(_: argparse.Namespace) -> int:
             f"drift≥{p.get('driftSustainedMinutes', 10)}m, "
             f"chime cooldown={p.get('chimeCooldownMinutes', 25)}m"
         )
-    print(f"Goal: {cfg.get('currentGoal')}")
+    resolved = resolve_active_focus(cfg)
+    print(f"Focus ({resolved.cadence_label}): {resolved.text}")
     print(f"Lookback: {cfg.get('lookbackHours', 6)}h work-block review")
     try:
         print(f"Familiar stills: {get_stills(cfg)}")
@@ -275,19 +337,19 @@ def cmd_status(_: argparse.Namespace) -> int:
 
 
 def cmd_slack(args: argparse.Namespace) -> int:
-    from focus_guardian.slack_bot import start_bot, stop_bot, slack_bot_pid_path
-
+    if args.action == "check":
+        return print_slack_check(interactive=True)
     if args.action == "start":
-        start_bot(foreground=args.foreground)
-    elif args.action == "stop":
-        stop_bot()
-    elif args.action == "status":
-        p = slack_bot_pid_path()
-        if p.exists():
-            print(f"Slack bot running (pid {p.read_text().strip()}).")
-        else:
-            print("Slack bot not running.")
-    return 0
+        if print_slack_check(interactive=True) != 0:
+            print("\nFix the issues above, then run: fgr slack start -f", file=sys.stderr)
+            return 1
+        start_slack_bot(args.foreground)
+        return 0
+    if args.action == "stop":
+        stop_slack_bot()
+        return 0
+    print("Usage: fgr slack check | start | stop")
+    return 1
 
 
 def cmd_guardian(args: argparse.Namespace) -> int:
@@ -299,10 +361,16 @@ def cmd_guardian(args: argparse.Namespace) -> int:
         return 0
     if args.action == "once":
         cfg = load_config()
+        if not has_active_focus(cfg):
+            print(NO_FOCUS_HINT)
+            return 0
         a = evaluate_and_chime(cfg)
         print(json.dumps(a.to_dict(), indent=2))
         return 0
     cfg = load_config()
+    if not has_active_focus(cfg):
+        print(NO_FOCUS_HINT)
+        return 0
     a = evaluate_drift(cfg)
     print(json.dumps(a.to_dict(), indent=2))
     return 0
@@ -320,6 +388,14 @@ def cmd_monitor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_mcp(_: argparse.Namespace) -> int:
+    """Run the local MCP server (stdio) for Claude Desktop, Cursor, or Codex."""
+    from focus_guardian.mcp_server import main as mcp_main
+
+    mcp_main()
+    return 0
+
+
 def cmd_init(_: argparse.Namespace) -> int:
     ensure_config()
     cfg = load_config()
@@ -331,13 +407,13 @@ def cmd_init(_: argparse.Namespace) -> int:
         print(f"Familiar OK: {get_stills(load_config())}")
     else:
         print("Install Familiar on this machine and complete setup.")
-    print("Default: proactive guardian. Run: fg guardian start  |  fg review --human")
+    print("Default: proactive guardian. Run: fgr guardian start  |  fgr slack start  |  fgr review --human")
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        prog="fg",
+        prog="fgr",
         description="Focus Guardian — Familiar-powered productivity companion",
     )
     parser.add_argument("--version", action="version", version=__version__)
@@ -376,7 +452,7 @@ def main() -> int:
         "goal",
         help="Set or show today's focus (what Guardian compares you against)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog='Example: fg goal "HiBob slide and demo today"',
+        epilog='Example: fgr goal "HiBob slide and demo today"',
     )
     p_goal.add_argument(
         "words",
@@ -391,7 +467,7 @@ def main() -> int:
     p_goal.add_argument(
         "--hours",
         type=float,
-        help="How many hours fg review looks back (default 6)",
+        help="How many hours fgr review looks back (default 6)",
     )
     p_goal.add_argument(
         "--auto-keywords",
@@ -400,6 +476,44 @@ def main() -> int:
         help="Pull keywords from your goal text (default: on)",
     )
     p_goal.set_defaults(func=cmd_goal)
+
+    p_focus = sub.add_parser(
+        "focus",
+        help="Dynamic focus stack — day / week / month",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            'Examples:\n'
+            '  fgr focus "This week explore pricing, competitors, and GTM" --cadence week\n'
+            '  fgr focus "Today: competitor spreadsheet" --cadence day\n'
+            '  fgr focus --week sun-thu\n'
+            '  fgr focus --clear day'
+        ),
+    )
+    p_focus.add_argument("words", nargs="*", help="Focus in plain English")
+    p_focus.add_argument(
+        "--cadence",
+        choices=["day", "week", "month"],
+        help="How long this focus applies (default: inferred from text)",
+    )
+    p_focus.add_argument(
+        "--priorities",
+        help="Comma-separated priorities (overrides parsing from text)",
+    )
+    p_focus.add_argument(
+        "--avoid",
+        help="Comma-separated drift triggers, e.g. linkedin,new tooling",
+    )
+    p_focus.add_argument(
+        "--week",
+        metavar="PRESET",
+        help=f"Week boundary preset: {', '.join(WEEK_PRESETS)}",
+    )
+    p_focus.add_argument(
+        "--clear",
+        choices=["day", "week", "month"],
+        help="Remove focus for a cadence",
+    )
+    p_focus.set_defaults(func=cmd_focus)
 
     sub.add_parser("paths", help="Show Familiar data folder + Guardian config paths").set_defaults(
         func=cmd_paths
@@ -416,6 +530,25 @@ def main() -> int:
 
     sub.add_parser("status").set_defaults(func=cmd_status)
     sub.add_parser("init").set_defaults(func=cmd_init)
+
+    sub.add_parser(
+        "mcp",
+        help="Run local MCP server (Claude Desktop, Cursor, Codex — no API key)",
+    ).set_defaults(func=cmd_mcp)
+
+    p_slack = sub.add_parser(
+        "slack",
+        help="Interactive Slack bot (Socket Mode DM listener)",
+    )
+    p_slack.add_argument(
+        "action",
+        choices=["check", "start", "stop"],
+        nargs="?",
+        default="check",
+        help="check setup, start, or stop the Slack bot daemon",
+    )
+    p_slack.add_argument("-f", "--foreground", action="store_true")
+    p_slack.set_defaults(func=cmd_slack)
 
     p_guard = sub.add_parser(
         "guardian",
@@ -435,14 +568,6 @@ def main() -> int:
     p_mon.add_argument("-i", "--interval", type=int, default=None, help="Minutes (>=30 recommended)")
     p_mon.add_argument("-f", "--foreground", action="store_true")
     p_mon.set_defaults(func=cmd_monitor)
-
-    p_slack = sub.add_parser(
-        "slack",
-        help="Two-way Slack bot: goal-setting, status, coaching, and proactive drift DMs",
-    )
-    p_slack.add_argument("action", choices=["start", "stop", "status"], default="status", nargs="?")
-    p_slack.add_argument("-f", "--foreground", action="store_true")
-    p_slack.set_defaults(func=cmd_slack)
 
     args = parser.parse_args()
     return args.func(args)
