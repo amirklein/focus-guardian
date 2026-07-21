@@ -94,5 +94,13 @@ def focus_markdown_path() -> Path:
     return state_dir() / "focus.md"
 
 
+def live_context_json_path() -> Path:
+    return state_dir() / "live_context.json"
+
+
+def live_context_md_path() -> Path:
+    return state_dir() / "live_context.md"
+
+
 def slack_pid_path() -> Path:
     return state_dir() / "slack.pid"

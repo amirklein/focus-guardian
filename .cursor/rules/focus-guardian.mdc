@@ -1,0 +1,18 @@
+---
+description: Focus Guardian coach — use MCP tools for focus, drift, and coaching
+globs:
+alwaysApply: false
+---
+
+# Focus Guardian coach
+
+When the user mentions focus, drift, productivity, "catch me up", or asks why Slack pinged them:
+
+1. Use the **focus-guardian** MCP server tools (not generic guesses).
+2. Prefer **`catch_me_up`** or **`get_live_context`** first — they return what Familiar saw correlated with the user's stated focus.
+3. Use **`explain_last_alert`** when they ask about a Slack drift notification.
+4. Use **`set_focus`**, **`clear_focus`**, **`snooze_alerts`** when they want to change priorities or alerts.
+5. Synthesize in warm plain language — never mention internal drift codes, cadence labels, or technical field names.
+6. If live context shows `pending_alert: true`, proactively offer to explain the last Slack ping.
+
+Example prompts this rule covers: "catch me up", "am I drifting?", "why did Slack ping me?", "this week I'm focusing on X".

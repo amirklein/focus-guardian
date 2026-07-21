@@ -141,18 +141,25 @@ def format_drift_message(
     nudge: str,
     expires_at: str | None = None,
 ) -> str:
-    lines = [
-        "*Focus Guardian — drift*",
-        "",
-        f"*Cadence:* {cadence_label}",
-        f"*Focus:* {focus_text[:300]}",
-    ]
-    if expires_at:
-        lines.append(f"*Expires:* {expires_at}")
+    """Short conversational Slack ping — synthesis happens in Cursor/Claude."""
+    _ = expires_at  # not shown in thin ping
+    focus = focus_text[:200] if focus_text else "your focus"
+    lines: list[str] = []
+
+    if nudge:
+        lines.append(nudge[:400])
+    elif reason and reason != "On track in the evaluation window.":
+        lines.append(reason[:300])
+    else:
+        lines.append(f"Heads up — you may be drifting from {focus}.")
+
     if wispr_excerpt:
-        lines.append(f"\n_Wispr:_ {wispr_excerpt[:400]}")
-    lines.append(f"\n*Signal:* {reason[:300]}")
-    lines.append(f"*Nudge:* {nudge[:400]}")
+        lines.append(f'\nYou said: "{wispr_excerpt[:200]}"')
+
+    lines.append(
+        f"\nYour focus ({cadence_label.lower()}): _{focus}_"
+    )
+    lines.append('\nOpen Cursor or Claude and ask _"catch me up"_ for the full coaching read.')
     return "\n".join(lines)
 
 

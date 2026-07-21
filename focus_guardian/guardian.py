@@ -13,6 +13,7 @@ from pathlib import Path
 
 from focus_guardian.clipboard_intel import proactive_cfg
 from focus_guardian.coach import coach_drift_nudge
+from focus_guardian.coach_context import refresh_live_context
 from focus_guardian.drift import DriftAssessment, evaluate_drift
 from focus_guardian.familiar import stills_root
 from focus_guardian.focus import with_resolved_focus
@@ -48,9 +49,13 @@ def evaluate_and_chime(cfg: dict) -> DriftAssessment:
     out = assessment.to_dict()
     out["guardian"] = True
     last_report_path().write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
+
+    chime_sent = False
     if assessment.should_chime:
         nudge = coach_drift_nudge(assessment, cfg)
-        notify_drift_chime(assessment, nudge, cfg)
+        chime_sent = notify_drift_chime(assessment, nudge, cfg)
+
+    refresh_live_context(cfg, drift=assessment, chime_sent=chime_sent)
     return assessment
 
 
@@ -68,6 +73,7 @@ def _guardian_loop() -> None:
         f.write(f"{datetime.now().isoformat(timespec='seconds')} guardian started\n")
 
     last_schedule_check = 0.0
+    last_context_refresh = 0.0
 
     while True:
         try:
@@ -89,6 +95,10 @@ def _guardian_loop() -> None:
             if now - last_schedule_check >= 300:
                 maybe_run_scheduled_reviews(cfg)
                 last_schedule_check = now
+
+            if now - last_context_refresh >= 300:
+                refresh_live_context(with_resolved_focus(load_config()))
+                last_context_refresh = now
 
             mtime = _latest_familiar_mtime(root)
 

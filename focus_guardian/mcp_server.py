@@ -7,6 +7,12 @@ only reads/writes local focus state and runs rule-based drift/review.
 
 from __future__ import annotations
 
+from focus_guardian.coach_context import (
+    clear_pending_alert,
+    format_context_for_host,
+    load_live_context,
+    refresh_live_context,
+)
 from focus_guardian.paths import load_config
 from focus_guardian.slack_commands import (
     _handle_clear_focus,
@@ -31,11 +37,51 @@ except ImportError as exc:  # pragma: no cover
 mcp = FastMCP(
     "Focus Guardian",
     instructions=(
-        "Tools for the user's current focus (day/week/month), drift detection "
-        "against that focus using Familiar screen context, session reviews, "
-        "and alert snooze. All data stays local — no API keys."
+        "You are the user's focus coach. Use get_live_context or catch_me_up to "
+        "understand what Familiar saw on their screen, correlate it with their "
+        "stated focus, and respond in warm plain language. Use set_focus when they "
+        "want to change priorities. Use explain_last_alert when they ask why Slack "
+        "pinged them. Never mention internal drift codes or technical labels."
     ),
 )
+
+
+@mcp.tool()
+def get_live_context() -> str:
+    """Full live dossier: focus, Familiar activity story, drift state, work blocks."""
+    cfg = load_config()
+    ctx = refresh_live_context(cfg)
+    return format_context_for_host(ctx)
+
+
+@mcp.tool()
+def explain_last_alert() -> str:
+    """Why Slack sent a drift ping, plus context since the alert."""
+    data = load_live_context()
+    cfg = load_config()
+    if not data:
+        ctx = refresh_live_context(cfg)
+        return format_context_for_host(ctx)
+
+    parts = []
+    if data.get("pending_alert"):
+        parts.append(
+            f"Slack alert at {data.get('last_alert_at', '?')}: "
+            f"{data.get('last_alert_reason') or data.get('drift_reason', 'drift detected')}"
+        )
+    else:
+        parts.append("No pending Slack alert — here's your current context:")
+    parts.append("")
+    parts.append(format_context_for_host(data))
+    clear_pending_alert()
+    return "\n".join(parts)
+
+
+@mcp.tool()
+def catch_me_up() -> str:
+    """Main coaching entry point: live context plus last 6h work blocks."""
+    clear_pending_alert()
+    return get_live_context()
 
 
 @mcp.tool()
@@ -51,14 +97,18 @@ def set_focus(text: str, cadence: str | None = None) -> str:
     args = {"text": text}
     if cadence:
         args["cadence"] = cadence.lower()
-    return _handle_set_focus(text, args, cfg)
+    result = _handle_set_focus(text, args, cfg)
+    refresh_live_context(load_config())
+    return result
 
 
 @mcp.tool()
 def clear_focus(cadence: str = "day") -> str:
     """Remove focus for a cadence: day, week, or month."""
     cfg = load_config()
-    return _handle_clear_focus("", {"cadence": cadence.lower()}, cfg)
+    result = _handle_clear_focus("", {"cadence": cadence.lower()}, cfg)
+    refresh_live_context(load_config())
+    return result
 
 
 @mcp.tool()
@@ -76,13 +126,13 @@ def get_status() -> str:
 
 @mcp.tool()
 def get_review() -> str:
-    """Session review over recent work blocks (Familiar timeline + rule-based synthesis)."""
+    """Session review snapshot (prefer catch_me_up for full host-model synthesis)."""
     return _handle_review(load_config())
 
 
 @mcp.tool()
 def get_drift_status() -> str:
-    """Live drift check — are you off your stated focus right now?"""
+    """Live drift check snapshot (prefer catch_me_up for full coaching read)."""
     return _handle_drift(load_config())
 
 

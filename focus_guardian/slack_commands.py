@@ -6,6 +6,7 @@ import json
 import re
 from typing import Any
 
+from focus_guardian.coach_context import refresh_live_context
 from focus_guardian.drift import evaluate_drift
 from focus_guardian.focus import (
     NO_FOCUS_HINT,
@@ -17,7 +18,6 @@ from focus_guardian.focus import (
     resolve_active_focus,
     with_resolved_focus,
 )
-from focus_guardian.llm import parse_intent
 from focus_guardian.paths import focus_markdown_path, last_report_path, load_config, save_config
 from focus_guardian.review import review_session
 from focus_guardian.snooze import (
@@ -36,10 +36,12 @@ HELP_TEXT = """*Focus Guardian* — talk to me in plain language.
 • _What's my focus?_
 • _Clear today's focus_
 
-*Check-ins*
-• _How did today go?_ — session review
-• _Am I drifting?_ — live drift check
+*Check-ins (snapshot here — full coaching in Cursor/Claude)*
+• _How did today go?_ — quick recap
+• _Am I drifting?_ — quick drift check
 • _Status_
+
+*Deep coaching* — open Cursor or Claude and ask _"catch me up"_
 
 *Alerts*
 • _Snooze until 3pm_ / _Pause alerts for 2 hours_
@@ -48,7 +50,17 @@ HELP_TEXT = """*Focus Guardian* — talk to me in plain language.
 *Week schedule*
 • _Set week to sun-thu_
 
-Proactive drift alerts come from `fgr guardian start`. I'm the interactive side (`fgr slack start`)."""
+Proactive drift alerts come from `fgr guardian start`. Configure focus and get coaching in Cursor/Claude via MCP."""
+
+
+def _redirect_to_host() -> bool:
+    cfg = load_config()
+    coach = cfg.get("coach") or {}
+    return coach.get("redirectSlackToHost", True)
+
+
+def _host_redirect_suffix() -> str:
+    return '\n\n_For the full coaching read, ask in Cursor or Claude: "catch me up"_'
 
 
 def detect_intent(text: str) -> str:
@@ -107,33 +119,12 @@ def _preset_from_text(text: str) -> str | None:
     return None
 
 
-def _build_context(cfg: dict) -> dict[str, Any]:
-    resolved = resolve_active_focus(cfg)
-    ctx: dict[str, Any] = {
-        "active_focus": {
-            "text": resolved.text,
-            "cadence": resolved.cadence,
-            "cadence_label": resolved.cadence_label,
-            "priorities": resolved.priorities,
-        },
-    }
-    if last_report_path().exists():
-        try:
-            data = json.loads(last_report_path().read_text(encoding="utf-8"))
-            ctx["last_drift"] = {
-                "should_chime": data.get("should_chime"),
-                "reason": data.get("reason", data.get("summary", ""))[:200],
-            }
-        except (json.JSONDecodeError, OSError):
-            pass
-    return ctx
-
-
 def _handle_set_focus(text: str, args: dict[str, Any] | None, cfg: dict) -> str:
     body = args.get("text", text) if args else text
     cadence = args.get("cadence") if args else None
     cfg = add_focus_entry(cfg, body, cadence=cadence)
     save_config(cfg)
+    refresh_live_context(load_config())
     return f"Got it.\n\n{format_focus_status(cfg)}\n\n_Saved to {focus_markdown_path()}_"
 
 
@@ -180,6 +171,9 @@ def _handle_status(cfg: dict) -> str:
 def _handle_review(cfg: dict) -> str:
     if not has_active_focus(cfg):
         return NO_FOCUS_HINT
+    if _redirect_to_host():
+        ctx = refresh_live_context(cfg)
+        return f"{ctx.headline}{_host_redirect_suffix()}"
     review = review_session(cfg)
     out = review.to_dict()
     last_report_path().write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
@@ -194,8 +188,10 @@ def _handle_drift(cfg: dict) -> str:
     assessment = evaluate_drift(cfg)
     out = assessment.to_dict()
     last_report_path().write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
+    if _redirect_to_host():
+        ctx = refresh_live_context(cfg, drift=assessment)
+        return f"{ctx.headline}{_host_redirect_suffix()}"
     resolved = resolve_active_focus(cfg)
-
     if assessment.should_chime:
         lines = [f"You're drifting from *{resolved.text[:200]}* — {assessment.evidence[:300]}"]
     else:
@@ -254,13 +250,8 @@ def handle_message(text: str, user_id: str) -> str:
     cfg = load_config()
     stripped = text.strip()
 
-    llm_result = parse_intent(stripped, _build_context(cfg), cfg)
-    if llm_result and llm_result.get("action"):
-        action = llm_result["action"]
-        args = llm_result.get("args") or {}
-    else:
-        action = detect_intent(stripped)
-        args = {}
+    action = detect_intent(stripped)
+    args: dict[str, Any] = {}
 
     if action == "unknown" and is_resume_phrase(stripped):
         action = "resume"
