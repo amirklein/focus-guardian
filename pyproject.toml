@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "certifi>=2024.0.0",
-    "slack-sdk[socket_mode]>=3.21.0",
+    "slack-sdk>=3.21.0",
 ]
 
 [project.scripts]
