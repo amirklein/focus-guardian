@@ -376,6 +376,32 @@ def cmd_guardian(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_simulate(args: argparse.Namespace) -> int:
+    cfg = load_config()
+    if not has_active_focus(cfg):
+        print(NO_FOCUS_HINT)
+        return 1
+    from focus_guardian.simulate import simulate_drift
+
+    result = simulate_drift(
+        cfg,
+        app=args.app,
+        title=args.title,
+        minutes=args.minutes,
+        interval_seconds=args.interval,
+        wispr_text=args.wispr,
+        notify=args.notify,
+    )
+    print(json.dumps(result, indent=2))
+    if result.get("notified"):
+        print("\nSlack drift ping sent (if Slack tokens are configured).")
+    elif args.notify and not result.get("should_chime"):
+        print("\nNo Slack ping — drift threshold not met. Try --minutes 25 or lower distractionMinutes in config.")
+    print(f"\nLive context: {focus_markdown_path().parent / 'live_context.md'}")
+    print('Open Cursor and ask: "catch me up" or "why did Slack ping me?"')
+    return 0
+
+
 def cmd_monitor(args: argparse.Namespace) -> int:
     if args.action == "start":
         start_monitor(args.interval, args.foreground)
@@ -562,6 +588,50 @@ def main() -> int:
     )
     p_guard.add_argument("-f", "--foreground", action="store_true")
     p_guard.set_defaults(func=cmd_guardian)
+
+    p_sim = sub.add_parser(
+        "simulate",
+        help="Inject synthetic Familiar captures to test drift detection",
+    )
+    p_sim.add_argument(
+        "action",
+        choices=["drift"],
+        help="drift: simulate sustained distraction browsing",
+    )
+    p_sim.add_argument(
+        "--app",
+        default="Google Chrome",
+        help="Simulated app name (default: Google Chrome)",
+    )
+    p_sim.add_argument(
+        "--title",
+        default="linkedin feed | top job picks",
+        help="Window title — matched against distractionTitlePatterns",
+    )
+    p_sim.add_argument(
+        "--minutes",
+        type=int,
+        default=25,
+        help="How many minutes of synthetic distraction (default: 25)",
+    )
+    p_sim.add_argument(
+        "--interval",
+        type=int,
+        default=90,
+        help="Seconds between synthetic captures (default: 90)",
+    )
+    p_sim.add_argument(
+        "--wispr",
+        metavar="TEXT",
+        help="Optional off-topic Wispr/clipboard text to inject",
+    )
+    p_sim.add_argument(
+        "-n",
+        "--notify",
+        action="store_true",
+        help="Send Slack drift ping if threshold met (clears cooldown)",
+    )
+    p_sim.set_defaults(func=cmd_simulate)
 
     p_mon = sub.add_parser("watch", help="Alias for guardian (legacy interval watch if not proactive)")
     p_mon.add_argument("action", choices=["start", "stop", "once"], default="once", nargs="?")

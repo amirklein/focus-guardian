@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "focus-guardian": {
+      "command": "/Users/amir.klein/Projects/focus-guardian/.venv/bin/python",
+      "args": ["-m", "focus_guardian.mcp_server"]
+    }
+  }
+}

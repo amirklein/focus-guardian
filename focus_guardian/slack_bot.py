@@ -80,11 +80,15 @@ def _run_listener() -> None:
             return
 
         user_id = event.get("user")
+        channel = event.get("channel")
+        raw_text = (event.get("text") or "").strip()
+        _log(f"event message user={user_id or '?'} channel={channel or '?'} text={raw_text[:80]!r}")
+
         if not user_id or not _authorized_user(user_id, load_config()):
-            _log(f"ignored message from {user_id or 'unknown'}")
+            _log(f"ignored message from {user_id or 'unknown'} (check SLACK_USER_ID)")
             return
 
-        text = (event.get("text") or "").strip()
+        text = raw_text
         if not text:
             return
 
